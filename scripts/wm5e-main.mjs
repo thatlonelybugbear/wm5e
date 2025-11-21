@@ -6,36 +6,47 @@ const Constants = {
 };
 
 const WM_ACTIONS = {
-	Cleave: async ({ messageId }) => doCleave({ messageId }),
-	Graze: async ({ messageId }) => doGraze({ messageId }),
-	Nick: async ({ messageId }) => doNick({ messageId }),
-	Push: async ({ messageId }) => doPush({ messageId }),
-	Sap: async ({ messageId }) => doSap({ messageId }),
-	Slow: async ({ messageId }) => doSlow({ messageId }),
-	Topple: async ({ messageId }) => doTopple({ messageId }),
-	Vex: async ({ messageId }) => doVex({ messageId }),
+	Cleave: async ({ messageId, shiftKey }) => doCleave({ messageId, shiftKey }),
+	Graze: async ({ messageId, shiftKey }) => doGraze({ messageId, shiftKey }),
+	Nick: async ({ messageId, shiftKey }) => doNick({ messageId, shiftKey }),
+	Push: async ({ messageId, shiftKey }) => doPush({ messageId, shiftKey }),
+	Sap: async ({ messageId, shiftKey }) => doSap({ messageId, shiftKey }),
+	Slow: async ({ messageId, shiftKey }) => doSlow({ messageId, shiftKey }),
+	Topple: async ({ messageId, shiftKey }) => doTopple({ messageId, shiftKey }),
+	Vex: async ({ messageId, shiftKey }) => doVex({ messageId, shiftKey }),
 };
 
-Hooks.on('ready', () => {
+Hooks.on('init', () => {
 	document.addEventListener('click', onActionsClick, { capture: true });
+	document.addEventListener('pointerdown', onActionsClick, { capture: true, passive: false });
+	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
 });
 
 async function onActionsClick(event) {
-	if (event.shiftKey) return;
-
+	const shiftKey = event.shiftKey;
 	let el = event.target;
 
 	if (el.tagName !== 'A') {
 		el = el.closest('a');
 		if (!el) return;
 	}
-
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
 	const term = Object.keys(WM_ACTIONS).find((key) => uuid?.includes(key.toLowerCase()));
 
 	if (!tooltip && !term) return;
 
+	if (event.button === 2) {
+		// if right click reinstate the original left click open Journal action
+		event.preventDefault();
+		event.stopImmediatePropagation();
+
+		const JournalEntry = await fromUuid(uuid);
+		const target = el.closest('a[data-link]') ?? el;
+		const anchor = target?.dataset?.hash ?? null;
+		return JournalEntry?.parent?.sheet?.render(true, { pageId: JournalEntry.id, anchor });
+	}
+	if (event.type !== 'click') return;
 	const wmAction = WM_ACTIONS[tooltip] || WM_ACTIONS[term];
 
 	if (!wmAction) return;
@@ -43,7 +54,7 @@ async function onActionsClick(event) {
 	event.preventDefault();
 	event.stopPropagation();
 	const messageId = el?.closest?.('[data-message-id]')?.dataset?.messageId ?? event?.currentTarget?.dataset?.messageId;
-	await wmAction({ messageId });
+	await wmAction({ messageId, shiftKey });
 	return;
 }
 
@@ -52,8 +63,7 @@ function gridUnitDistance() {
 }
 
 function setTargets(targetIds, { mode = 'replace' } = {}) {
-	// const targetIds = targets.map(t => t.id);
-	canvas.tokens.setTargets(targetIds, { mode });
+	return canvas.tokens.setTargets(targetIds, { mode });
 }
 
 async function promptTargetSelection(targets, multiple, title = 'Select Target') {
@@ -64,12 +74,32 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 		}
 		t.wm5e = { img };
 	}
-	const select = await foundry.applications.api.DialogV2.wait({
+	const selectPromise = foundry.applications.api.DialogV2.wait({
 		window: { title },
 		content: `<p>Choose ${multiple} target(s):</p>`,
 		modal: true,
 		buttons: targets.map((t) => ({ label: t.name, icon: t.wm5e.img, action: t.id })),
+		classes: ['wm5e'],
 	});
+	setTimeout(() => {
+		const dialogEl = document.querySelector('.application.dialog.wm5e');
+		if (!dialogEl) return;
+
+		dialogEl.addEventListener('pointerover', (ev) => {
+			const btn = ev.target.closest('button');
+			if (!btn) return;
+			const id = btn.getAttribute('data-action'); // DialogV2 sets button action in data-action
+			if (!id) return;
+			setTargets([id]);
+		});
+
+		dialogEl.addEventListener('pointerout', (ev) => {
+			const btn = ev.target.closest('button');
+			if (!btn) return;
+			setTargets([]);
+		});
+	}, 0);
+	const select = await selectPromise;
 	if (!select) return false;
 	setTargets([select]);
 	return true;
@@ -95,10 +125,10 @@ function getMessageData(messageId) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-async function doCleave({ messageId }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, rolls, originatingMessage, isAuthor } = getMessageData(messageId) || {};
+async function doCleave({ messageId, shiftKey }) {
+	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls, originatingMessage, isAuthor } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess) return ui.notifications.warn('Cleave can only be used on a successful attack roll.');
+	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Cleave can only be used on a successful attack roll.');
 
 	const range = activity.range.reach || gridUnitDistance();
 	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
@@ -115,16 +145,19 @@ async function doCleave({ messageId }) {
 		const damage = foundry.utils.duplicate(activity.damage);
 		damage.includeBase = false;
 		const clonedActivity = activity.clone({ damage }, { keepId: true });
-		const [attackRoll] = await clonedActivity.rollAttack();
-		if (attackRoll?.isSuccess) await clonedActivity.rollDamage();
+		if (game.modules.get('midi-qol')?.active) return MidiQOL.completeActivityUse(clonedActivity);
+		else {
+			const [attackRoll] = await clonedActivity.rollAttack();
+			if (attackRoll?.isSuccess) await clonedActivity.rollDamage();
+		}
 	} else activity.use();
 	return;
 }
 
-async function doGraze({ messageId }) {
+async function doGraze({ messageId, shiftKey }) {
 	const { attacker, attackerToken, targetToken, activity, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (attackRolls[0].isSuccess) return ui.notifications.warn('Graze can only be used on a failed attack roll.');
+	if (attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Graze can only be used on a failed attack roll.');
 	const damage = attacker.system.abilities[activity.ability].mod;
 	if (damage <= 0) return ui.notifications.warn('Graze requires a positive ability modifier to deal damage.');
 	const clonedActivity = activity.clone({ damage: { includeBase: false, parts: [{ custom: { enabled: true, formula: `${damage}` } }] } }, { keepId: true });
@@ -139,16 +172,17 @@ async function doNick() {
 async function doPush() {
 	const { attacker, attackerToken, targetToken, activity, attackRolls, author } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess) return ui.notifications.warn('Push can only be used on a successful attack roll.');
+	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Push can only be used on a successful attack roll.');
 	const targetTokenSize = Math.max(targetToken.document.width, targetToken.document.height);
 	if (targetTokenSize > 2) return ui.notifications.warn('Cannot push targets larger than size 2.');
 	return ui.notifications.warn('Push action: movement implementation not yet done.');
 }
 
-async function doSap({ messageId }) {
+async function doSap({ messageId, shiftKey }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess) return ui.notifications.warn('Sap can only be used on a successful attack roll.');
+	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Sap can only be used on a successful attack roll.');
+	if (target.appliedEffects.some((ae) => ae.name === 'Sap' && ae.origin === item.uuid)) return ui.notifications.warn('Target is already sapped.');
 	const effectData = {
 		name: 'Sap',
 		icon: 'icons/skills/wounds/injury-face-impact-orange.webp',
@@ -162,13 +196,13 @@ async function doSap({ messageId }) {
 		},
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
-	else await queryEffectsCreation('createEffects', { actorUuid: target.uuid, effects: [effectData] });
+	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 }
 
-async function doSlow({ messageId }) {
+async function doSlow({ messageId, shiftKey }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess) return ui.notifications.warn('Slow can only be used on a successful attack roll.');
+	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Slow can only be used on a successful attack roll.');
 	if (target.appliedEffects.some((ae) => ae.name === 'Slow (Weapon Mastery)')) {
 		return ui.notifications.warn('Target is already slowed.');
 	}
@@ -187,13 +221,14 @@ async function doSlow({ messageId }) {
 		},
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
-	else await queryEffectsCreation('createEffects', { actorUuid: target.uuid, effects: [effectData] });
+	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 }
 
-async function doTopple({ messageId }) {
+async function doTopple({ messageId, shiftKey }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess) return ui.notifications.warn('Topple can only be used on a successful attack roll.');
+	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Topple can only be used on a successful attack roll.');
+	if (target.statuses.prone) return ui.notifications.warn('Target is already prone.');
 	const ability = 'con';
 	const dc = attacker.system.abilities[activity.ability].dc;
 	if (target.isOwner) {
@@ -212,16 +247,16 @@ async function doTopple({ messageId }) {
 			effectData.origin = item.uuid;
 			effectData.flags = effectData.flags || {};
 			effectData.flags.wm5e = { source: 'Topple action' };
-			await queryEffectsCreation('createEffects', { actorUuid: target.uuid, effects: [effectData], options: { keepId: true } });
+			await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData], options: { keepId: true } });
 		}
 	}
 }
 
-async function doVex({ messageId }) {
+async function doVex({ messageId, shiftKey }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess) return ui.notifications.warn('Topple can only be used on a successful attack roll.');
-
+	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Vex can only be used on a successful attack roll.');
+	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === 'Vex')) return ui.notifications.warn('Target is already affected by your Vex.');
 	const effectData = {
 		name: 'Vex',
 		icon: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
@@ -235,13 +270,12 @@ async function doVex({ messageId }) {
 		},
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
-	else await queryEffectsCreation('createEffects', { actorUuid: target.uuid, effects: [effectData] });
+	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 }
 
 Hooks.on('init', () => {
-	CONFIG.queries[Constants.MODULE_ID] = {};
-	CONFIG.queries[Constants.GM_CREATE_EFFECTS] = createEffects;
-	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
+	registerSettings();
+	registerQueries();
 });
 
 async function doQueries(type, { actorUuid, effects, options = {} }) {
@@ -261,12 +295,20 @@ async function doQueries(type, { actorUuid, effects, options = {} }) {
 }
 
 async function createEffects({ actorUuid, effects, options } = {}) {
-	const actor = await from(actorUuid);
+	const actor = await fromUuid(actorUuid);
 	return actor?.createEmbeddedDocuments('ActiveEffect', effects, options);
 }
 
 async function rollSavingThrow({ actorUuid, ability, dc, flavor }) {
-	const actor = await from(actorUuid);
+	const actor = await fromUuid(actorUuid);
 	if (!actor) return false;
 	return actor.rollAbilitySave({ ability, dc }, {}, { data: { flavor } });
 }
+
+function registerQueries() {
+	CONFIG.queries[Constants.MODULE_ID] = {};
+	CONFIG.queries[Constants.GM_CREATE_EFFECTS] = createEffects;
+	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
+}
+
+function registerSettings() {}

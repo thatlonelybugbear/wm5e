@@ -1,3 +1,9 @@
+## 13.5110.3
+* Defensively call canvas.grid
+* Consolidate init hook calls
+* Fix for Topple not setting target dc to save roll properly
+* Fix for `turn` instead of `turns` in effects' data
+
 ## 13.5110.2
 * Right mouse clicks on the weapon mastery link in the chat messages will now open the Journal entry, like the original left click did.
 * SHIFT clicking on the weapon mastery will bypass rules like: "Needs a successful attack to use".

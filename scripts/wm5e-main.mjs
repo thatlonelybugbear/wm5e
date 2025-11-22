@@ -80,7 +80,7 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 		window: { title },
 		content: `<p>Choose ${multiple} target(s):</p>`,
 		modal: true,
-		buttons: targets.map((t) => ({ label: t.name, icon: t.wm5e.img, action: t.id })),
+		buttons: targets.map((t) => ({ label: t.name, icon: t.wm5e.img, action: t.id })), //@to-do: rework the icon into the element as this doesn't work
 		classes: ['wm5e'],
 	});
 	setTimeout(() => {

@@ -1,7 +1,7 @@
 {
 	"id": "wm5e",
 	"title": "Weapon Masteries 5e",
-	"description": "A Foundry VTT module to automate 5e system's weapon masteries.",
+	"description": "A Foundry VTT module to automate 5e system's weapon masteries (requires Automated Conditions 5e module)",
 	"version": "13.5110.3",
 	"authors": [
 		{
@@ -32,9 +32,9 @@
 			{
 				"id": "automated-conditions-5e",
 				"type": "module",
-        "compatibility": {
-          "minimum": "13.5110.8.5"
-        }
+				"compatibility": {
+					"minimum": "13.5110.8.5"
+				}
 			}
 		]
 	},

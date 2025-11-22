@@ -216,7 +216,7 @@ async function doSlow({ messageId, shiftKey }) {
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { rounds: 1, turn: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
+		duration: { rounds: 1, turns: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
 		changes,
 		flags: {
 			wm5e: { source: 'Slow action' },
@@ -265,7 +265,7 @@ async function doVex({ messageId, shiftKey }) {
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { rounds: 1, turn: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
+		duration: { rounds: 1, turns: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
 		changes: [{ key: 'flags.automated-conditions-5e.grants.attack.advantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once; effectOriginTokenId === tokenId && hasAttack' }],
 		flags: {
 			wm5e: { source: 'Vex action' },

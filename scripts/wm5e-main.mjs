@@ -17,6 +17,8 @@ const WM_ACTIONS = {
 };
 
 Hooks.on('init', () => {
+	// registerSettings();
+	registerQueries();
 	document.addEventListener('click', onActionsClick, { capture: true });
 	document.addEventListener('pointerdown', onActionsClick, { capture: true, passive: false });
 	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
@@ -59,7 +61,7 @@ async function onActionsClick(event) {
 }
 
 function gridUnitDistance() {
-	return canvas.grid.distance;
+	return canvas?.grid?.distance || 5;
 }
 
 function setTargets(targetIds, { mode = 'replace' } = {}) {
@@ -232,7 +234,7 @@ async function doTopple({ messageId, shiftKey }) {
 	const ability = 'con';
 	const dc = attacker.system.abilities[activity.ability].dc;
 	if (target.isOwner) {
-		const [saveResult] = await target.rollSavingThrow({ ability, dc }, {}, { data: { flavor: `${item.name} - Topple Save` } });
+		const [saveResult] = await target.rollSavingThrow({ ability, target: dc }, {}, { data: { flavor: `${item.name} - Topple Save` } });
 		if (saveResult?.total < dc) {
 			const effectData = foundry.utils.duplicate(await ActiveEffect.implementation.fromStatusEffect('prone'));
 			effectData.origin = item.uuid;
@@ -273,11 +275,6 @@ async function doVex({ messageId, shiftKey }) {
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 }
 
-Hooks.on('init', () => {
-	registerSettings();
-	registerQueries();
-});
-
 async function doQueries(type, { actorUuid, effects, options = {} }) {
 	const activeGM = game.users.activeGM;
 	if (!activeGM) return false;
@@ -302,7 +299,7 @@ async function createEffects({ actorUuid, effects, options } = {}) {
 async function rollSavingThrow({ actorUuid, ability, dc, flavor }) {
 	const actor = await fromUuid(actorUuid);
 	if (!actor) return false;
-	return actor.rollAbilitySave({ ability, dc }, {}, { data: { flavor } });
+	return actor?.rollAbilitySave({ ability, target: dc }, {}, { data: { flavor } });
 }
 
 function registerQueries() {
@@ -311,4 +308,4 @@ function registerQueries() {
 	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
 }
 
-function registerSettings() {}
+// function registerSettings() {}

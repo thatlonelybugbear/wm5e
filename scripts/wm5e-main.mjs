@@ -39,7 +39,7 @@ async function onActionsClick(event) {
 	if (!tooltip && !term) return;
 
 	if (event.button === 2) {
-		// if right click reinstate the original left click open Journal action
+		// if the user right clicks, reinstate the original left click open Journal action
 		event.preventDefault();
 		event.stopImmediatePropagation();
 

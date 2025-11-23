@@ -171,13 +171,32 @@ async function doNick() {
 	return console.log('Nick action: nothing to implement.');
 }
 
-async function doPush() {
-	const { attacker, attackerToken, targetToken, activity, attackRolls, author } = getMessageData(messageId) || {};
+async function doPush({ messageId, shiftKey }) {
+	const { attacker, attackerToken, targetToken, target, activity, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Push can only be used on a successful attack roll.');
 	const targetTokenSize = Math.max(targetToken.document.width, targetToken.document.height);
-	if (targetTokenSize > 2) return ui.notifications.warn('Cannot push targets larger than size 2.');
-	return ui.notifications.warn('Push action: movement implementation not yet done.');
+	if (targetTokenSize > 2 && !shiftKey) return ui.notifications.warn('You can only push large or smaller targets.');
+	const maxDistance = 2 * gridUnitDistance();
+	const { angle } = new foundry.canvas.geometry.Ray(attackerToken, targetToken);
+	const direction = Math.normalizeDegrees(Math.toDegrees(angle));
+	let initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction, maxDistance);
+	let snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
+	let testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
+	if (testNewPosition.result.length === 1) {
+		initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction + 45, maxDistance);
+		snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
+		testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
+		if (testNewPosition.result.length === 1) {
+			initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction - 45, maxDistance);
+			snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
+			testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
+			if (testNewPosition.result.length === 1) return ui.notifications.warn('Nowhere to push the target.');
+		}
+	}
+	const finalPosition = testNewPosition.result.at(-1);
+	if (target.isOwner) return targetToken.document.update(finalPosition);
+	else return doQueries('push', { tokenUuid: targetToken.document.uuid, updates: finalPosition });
 }
 
 async function doSap({ messageId, shiftKey }) {
@@ -275,14 +294,16 @@ async function doVex({ messageId, shiftKey }) {
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 }
 
-async function doQueries(type, { actorUuid, effects, options = {} }) {
+async function doQueries(type, data) {
 	const activeGM = game.users.activeGM;
 	if (!activeGM) return false;
 	try {
 		if (type === 'createEffects') {
-			await activeGM.query(Constants.GM_CREATE_EFFECTS, { actorUuid, effects, options });
+			await activeGM.query(Constants.GM_CREATE_EFFECTS, data);
 		} else if (type === 'rollSave') {
-			await activeGM.query(Constants.ROLL_SAVE, { actorUuid, ability, options });
+			await activeGM.query(Constants.ROLL_SAVE, data);
+		} else if (type === 'push') {
+			await activeGM.query(Constants.PUSH, data);
 		}
 		return true;
 	} catch (err) {
@@ -296,6 +317,11 @@ async function createEffects({ actorUuid, effects, options } = {}) {
 	return actor?.createEmbeddedDocuments('ActiveEffect', effects, options);
 }
 
+async function pushAction({ tokenUuid, updates }) {
+	const token = await fromUuid(tokenUuid);
+	return token?.update(updates);
+}
+
 async function rollSavingThrow({ actorUuid, ability, dc, flavor }) {
 	const actor = await fromUuid(actorUuid);
 	if (!actor) return false;
@@ -306,6 +332,7 @@ function registerQueries() {
 	CONFIG.queries[Constants.MODULE_ID] = {};
 	CONFIG.queries[Constants.GM_CREATE_EFFECTS] = createEffects;
 	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
+	CONFIG.queries[Constants.PUSH] = pushAction;
 }
 
 // function registerSettings() {}

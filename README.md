@@ -7,7 +7,7 @@ Works for the following weapons masteries:
 * `Cleave`
 * `Graze`
 * `Nick` (nothing to automate)
-* `Push` (work in progress)
+* `Push`
 * `Sap`
 * `Slow`
 * `Topple`

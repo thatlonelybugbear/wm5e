@@ -6,6 +6,7 @@
 ## Description
 A Foundry VTT module to automate 5e system's weapon masteries (**requires** Automated Conditions 5e module)
 
+## How to use
 Click on the chat message Mastery link to use it.
 
 Works for the following weapons masteries:
@@ -24,7 +25,7 @@ To open the Journal entries you can instead right click on the mastery link.
 
 SHIFT + left click on the weapon mastery will bypass rules like: "Needs a successful attack to use".
 
-## How to use videos (better ones will follow)
+## Videos (better ones will follow)
 
 
 [wm5e.webm](https://github.com/user-attachments/assets/23430ceb-3061-491c-a736-44f6b99ce3cb)

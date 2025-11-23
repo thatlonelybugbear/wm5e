@@ -1,4 +1,5 @@
-## 13.5110.3
+## 13.5110.10
+* Initial public release
 * `Push` automation
 * Defensively call canvas.grid
 * Consolidate init hook calls

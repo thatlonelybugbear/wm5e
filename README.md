@@ -1,4 +1,4 @@
-# Weapon Masteries 5e
+# Automated Masteries 5e
 ![Latest Version](https://img.shields.io/badge/dynamic/json.svg?url=https://api.github.com/repos/thatlonelybugbear/wm5e/releases/latest&label=WM5E%20Version&query=$.tag_name&colorB=yellow&style=for-the-badge)
 ![Foundry Core Compatible Version](https://img.shields.io/badge/dynamic/json.svg?url=https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/module.json&label=Foundry%20Version&query=$.compatibility.verified&colorB=ff6400&style=for-the-badge)
 ![Dnd5e System Compatible Version](https://img.shields.io/badge/dynamic/json.svg?url=https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/module.json&label=dnd5e%20Version&query=$.relationships.systems[0].compatibility.verified&colorB=red&style=for-the-badge)

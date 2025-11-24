@@ -100,6 +100,26 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 			if (!btn) return;
 			setTargets([]);
 		});
+
+		const btns = Array.from(dialogEl.querySelectorAll('button')).slice(2); //@to-do: check robustness
+		btns.forEach((btn, i) => {
+			const t = targets[i];
+			if (!t) return;
+			btn.classList.add('target-btn', `target-${t.id}`);
+			const img = document.createElement('img');
+			img.src = t.wm5e.img;
+			img.alt = '';
+			img.className = 'target-icon'; //maybe for CSS
+			img.width = 50;
+			img.height = 50;
+			img.style.width = '50px';
+			img.style.height = '50px';
+			img.style.objectFit = 'cover';
+			img.style.flex = '0 0 50px';
+			btn.prepend(img);
+			btn.dataset.targetId = t.id; //is there any need?
+		});
+		
 	}, 0);
 	const select = await selectPromise;
 	if (!select) return false;

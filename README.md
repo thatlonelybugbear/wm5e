@@ -4,7 +4,7 @@
 ![Dnd5e System Compatible Version](https://img.shields.io/badge/dynamic/json.svg?url=https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/module.json&label=dnd5e%20Version&query=$.relationships.systems[0].compatibility.verified&colorB=red&style=for-the-badge)
 
 ## Description
-A Foundry VTT module to automate 5e system's weapon masteries (**requires** Automated Conditions 5e module)
+A Foundry VTT module to automate 5e system's weapon masteries (**requires** [Automated Conditions 5e](<https://github.com/thatlonelybugbear/automated-conditions-5e>) module)
 
 <hr>
 If you like what I do, consider supporting this lonely bugbear 🐾

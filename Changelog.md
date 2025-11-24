@@ -1,3 +1,6 @@
+## 13.5110.11
+* Show token image in target selection buttons for Cleave.
+
 ## 13.5110.10
 * Initial public release
 * `Push` automation

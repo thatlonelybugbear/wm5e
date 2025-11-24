@@ -1,3 +1,6 @@
+## 13.5110.12
+* Changed the module name to Automated Masteries 5e (I blame @alterNERDtive for that!)
+
 ## 13.5110.11
 * Show token image in target selection buttons for Cleave.
 

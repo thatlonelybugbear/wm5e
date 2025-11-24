@@ -307,7 +307,7 @@ async function doQueries(type, data) {
 		}
 		return true;
 	} catch (err) {
-		console.error(`${Constants.MODULE_NAME} | Error creating effects via GM query:`, err);
+		console.error(`${Constants.MODULE_NAME} | Error on the ${type} type GM query:`, err);
 		return false;
 	}
 }

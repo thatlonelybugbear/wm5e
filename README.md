@@ -34,7 +34,7 @@ Works for the following weapons masteries:
 * `Topple`
 * `Vex`
 
-As the system uses left click to open the Journal entry for each mastery, WM5e changes that behavior.
+As the system uses left click to open the Journal entry for each mastery, the module changes that behavior.
 
 To open the Journal entries you can instead right click on the mastery link.
 

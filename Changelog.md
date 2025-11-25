@@ -1,3 +1,6 @@
+## 13.5110.13
+* Fix for targeting source instead of targeted token when attacking linked actors
+
 ## 13.5110.12
 * Changed the module name to Automated Masteries 5e (I blame @alterNERDtive for that!)
 

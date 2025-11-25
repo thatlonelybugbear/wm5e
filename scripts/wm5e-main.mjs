@@ -80,7 +80,7 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 		window: { title },
 		content: `<p>Choose ${multiple} target(s):</p>`,
 		modal: true,
-		buttons: targets.map((t) => ({ label: t.name, icon: t.wm5e.img, action: t.id })), //@to-do: rework the icon into the element as this doesn't work
+		buttons: targets.map((t) => ({ label: t.name, img: t.wm5e.img, action: t.id })), //@to-do: rework the icon into the element as this doesn't work
 		classes: ['wm5e'],
 	});
 	setTimeout(() => {
@@ -226,7 +226,7 @@ async function doSap({ messageId, shiftKey }) {
 	if (target.appliedEffects.some((ae) => ae.name === 'Sap' && ae.origin === item.uuid)) return ui.notifications.warn('Target is already sapped.');
 	const effectData = {
 		name: 'Sap',
-		icon: 'icons/skills/wounds/injury-face-impact-orange.webp',
+		img: 'icons/skills/wounds/injury-face-impact-orange.webp',
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
@@ -251,7 +251,7 @@ async function doSlow({ messageId, shiftKey }) {
 	const changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -10 }));
 	const effectData = {
 		name: 'Slow (Weapon Mastery)',
-		icon: 'icons/magic/movement/chevrons-down-yellow.webp',
+		img: 'icons/magic/movement/chevrons-down-yellow.webp',
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
@@ -300,7 +300,7 @@ async function doVex({ messageId, shiftKey }) {
 	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === 'Vex')) return ui.notifications.warn('Target is already affected by your Vex.');
 	const effectData = {
 		name: 'Vex',
-		icon: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
+		img: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,

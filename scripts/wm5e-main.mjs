@@ -141,7 +141,7 @@ function getMessageData(messageId) {
 
 	const attackerToken = canvas.tokens.get(speaker.token);
 	const target = fromUuidSync(targets?.[0]?.uuid);
-	const targetToken = target?.token?.object || canvas.tokens.get(ChatMessage.getSpeaker({ actor: attacker })?.token);
+	const targetToken = target?.token?.object || canvas.tokens.get(ChatMessage.getSpeaker({ actor: target })?.token);
 	const activity = fromUuidSync(activityUuid);
 	const item = fromUuidSync(itemUuid);
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };

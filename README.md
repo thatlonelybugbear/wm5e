@@ -27,7 +27,7 @@ Click on the chat message Mastery link to use it.
 Works for the following weapons masteries:
 * `Cleave`
 * `Graze`
-* `Nick` (nothing to automate)
+* Nick (nothing to automate)
 * `Push`
 * `Sap`
 * `Slow`

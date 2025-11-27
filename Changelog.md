@@ -1,3 +1,6 @@
+## 13.5110.14
+* Respect grid distance units for Slow mastery
+
 ## 13.5110.13
 * Fix for targeting source instead of targeted token when attacking linked actors
 

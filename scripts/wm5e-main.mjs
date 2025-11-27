@@ -248,7 +248,7 @@ async function doSlow({ messageId, shiftKey }) {
 		return ui.notifications.warn('Target is already slowed.');
 	}
 	const movementTypes = Object.entries(target.system.attributes.movement).filter(([key, value]) => key !== 'hover' && value > 0);
-	const changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -10 }));
+	const changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2*gridUnitDistance() }));
 	const effectData = {
 		name: 'Slow (Weapon Mastery)',
 		img: 'icons/magic/movement/chevrons-down-yellow.webp',

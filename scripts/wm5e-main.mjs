@@ -17,7 +17,6 @@ const WM_ACTIONS = {
 };
 
 Hooks.on('init', () => {
-	// registerSettings();
 	registerQueries();
 	document.addEventListener('click', onActionsClick, { capture: true });
 	document.addEventListener('pointerdown', onActionsClick, { capture: true, passive: false });
@@ -119,7 +118,6 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 			btn.prepend(img);
 			btn.dataset.targetId = t.id; //is there any need?
 		});
-		
 	}, 0);
 	const select = await selectPromise;
 	if (!select) return false;
@@ -248,7 +246,9 @@ async function doSlow({ messageId, shiftKey }) {
 		return ui.notifications.warn('Target is already slowed.');
 	}
 	const movementTypes = Object.entries(target.system.attributes.movement).filter(([key, value]) => key !== 'hover' && value > 0);
-	const changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2*gridUnitDistance() }));
+	let changes;
+	if (foundry.utils.isNewerVersion(game.system.version, '5.2.0')) changes = [{ key: 'system.attributes.movement.bonus', mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2 * gridUnitDistance() }];
+	else changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2 * gridUnitDistance() }));
 	const effectData = {
 		name: 'Slow (Weapon Mastery)',
 		img: 'icons/magic/movement/chevrons-down-yellow.webp',
@@ -354,5 +354,3 @@ function registerQueries() {
 	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
 	CONFIG.queries[Constants.PUSH] = pushAction;
 }
-
-// function registerSettings() {}

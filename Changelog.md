@@ -1,3 +1,6 @@
+## 13.5220.1
+* For 5.2.x, start using `attributes.system.movement.bonus` instead of adding to available movements individually
+
 ## 13.5200.1
 * System 5.2.0 compatibility bump
 

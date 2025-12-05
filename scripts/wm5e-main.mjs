@@ -24,13 +24,14 @@ Hooks.on('init', () => {
 });
 
 async function onActionsClick(event) {
-	const shiftKey = event.shiftKey;
 	let el = event.target;
 
 	if (el.tagName !== 'A') {
 		el = el.closest('a');
 		if (!el) return;
 	}
+	
+	const shiftKey = event.shiftKey;
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
 	const term = Object.keys(WM_ACTIONS).find((key) => uuid?.includes(key.toLowerCase()));
@@ -121,7 +122,12 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 	}, 0);
 	const select = await selectPromise;
 	if (!select) return false;
-	setTargets([select]);
+	await new Promise(resolve => {
+	    setTimeout(() => {
+	        setTargets([select]);
+	        resolve();
+	    }, 15);
+	});
 	return true;
 }
 
@@ -171,6 +177,7 @@ async function doCleave({ messageId, shiftKey }) {
 			if (attackRoll?.isSuccess) await clonedActivity.rollDamage();
 		}
 	} else activity.use();
+	setTargets([targetToken.id]);
 	return;
 }
 

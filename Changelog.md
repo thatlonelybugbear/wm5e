@@ -1,5 +1,6 @@
 ## 13.5220.3
 * Strike through the mastery link in the chat message when it is used
+* The Nick mastery now generates a chat message with its description when used
 
 ## 13.5220.2
 * Cleave damage roll rework

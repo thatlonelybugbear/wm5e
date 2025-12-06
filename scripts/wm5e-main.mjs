@@ -30,7 +30,6 @@ async function onActionsClick(event) {
 		el = el.closest('a');
 		if (!el) return;
 	}
-	
 	const shiftKey = event.shiftKey;
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
@@ -79,7 +78,7 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 	const selectPromise = foundry.applications.api.DialogV2.wait({
 		window: { title },
 		content: `<p>Choose ${multiple} target(s):</p>`,
-		modal: true,
+		modal: false, //true,  // block other UI interactions?
 		buttons: targets.map((t) => ({ label: t.name, img: t.wm5e.img, action: t.id })), //@to-do: rework the icon into the element as this doesn't work
 		classes: ['wm5e'],
 	});
@@ -121,14 +120,43 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 		});
 	}, 0);
 	const select = await selectPromise;
+	console.log(select);
 	if (!select) return false;
-	await new Promise(resolve => {
-	    setTimeout(() => {
-	        setTargets([select]);
-	        resolve();
-	    }, 15);
+	await new Promise((resolve) => {
+		setTimeout(() => {
+			setTargets([select]);
+			resolve();
+		}, 15);
 	});
-	return true;
+	return canvas.tokens.get(select);
+}
+
+function createMessageConfig({ activity, target, type = 'damage' }) {
+	const messageConfig = {};
+	messageConfig.speaker = ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() });
+	messageConfig.flavor = 'a';
+	const flags = { dnd5e: {} };
+	flags.dnd5e.roll = { type };
+	const { item } = activity;
+	flags.dnd5e.item = {
+		type: item.type,
+		id: item.id,
+		uuid: item.uuid,
+	};
+	flags.dnd5e.activity = {
+		type: activity.type,
+		id: activity.id,
+		uuid: activity.uuid,
+	};
+	flags.dnd5e.targets = [
+		{
+			name: target.name,
+			uuid: target.actor.uuid,
+			ac: target.actor.system.attributes.ac.value,
+		},
+	];
+	messageConfig.flags = flags;
+	return messageConfig;
 }
 
 function getMessageData(messageId) {
@@ -164,21 +192,28 @@ async function doCleave({ messageId, shiftKey }) {
 	if (!validTargets.length) return ui.notifications.warn('No valid targets in range for Cleave.');
 
 	if (validTargets.length === 1) setTargets(validTargets);
-	const shouldProceed = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.');
-	if (!shouldProceed) return;
-
-	if (attacker.system.abilities[activity.ability].mod > 0) {
-		const damage = foundry.utils.duplicate(activity.damage);
-		damage.includeBase = false;
-		const clonedActivity = activity.clone({ damage }, { keepId: true });
-		if (game.modules.get('midi-qol')?.active) return MidiQOL.completeActivityUse(clonedActivity);
-		else {
-			const [attackRoll] = await clonedActivity.rollAttack();
-			if (attackRoll?.isSuccess) await clonedActivity.rollDamage();
-		}
-	} else activity.use();
-	setTargets([targetToken.id]);
-	return;
+	const cleaveTarget = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.');
+	if (!cleaveTarget) return ui.notifications.info('no targets');
+	const mod = attacker.system.abilities[activity.ability ?? 'str'].mod;
+	const useMod = mod < 0;
+	let cleaveAttackRolls;
+	if (game.modules.get('midi-qol')?.active) {
+		const workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
+		cleaveAttackRolls = await activity.rollAttack({ workflow }, {}, { createMessage: true });
+		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
+	} else cleaveAttackRolls = await activity.rollAttack();
+	if (cleaveAttackRolls?.[0]?.isSuccess) {
+		const damageFormula = activity.damage.parts?.[0]?.formula?.split(/[+-]/)?.[0]?.trim() ?? 0;
+		const finalFormula = useMod ? damageFormula + '' + mod : damageFormula;
+		const damageType = attackRolls[0].options.type;
+		const options = {
+			isCritical: cleaveAttackRolls[0].isCritical,
+			type: damageType,
+			appearance: { colorset: damageType },
+		};
+		await new CONFIG.Dice.DamageRoll(String(finalFormula), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: cleaveTarget }));
+	}
+	return setTargets([targetToken.id]);
 }
 
 async function doGraze({ messageId, shiftKey }) {
@@ -187,8 +222,12 @@ async function doGraze({ messageId, shiftKey }) {
 	if (attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Graze can only be used on a failed attack roll.');
 	const damage = attacker.system.abilities[activity.ability].mod;
 	if (damage <= 0) return ui.notifications.warn('Graze requires a positive ability modifier to deal damage.');
-	const clonedActivity = activity.clone({ damage: { includeBase: false, parts: [{ custom: { enabled: true, formula: `${damage}` } }] } }, { keepId: true });
-	await clonedActivity.rollDamage();
+	const damageType = attackRolls[0].options.type;
+	const options = {
+		type: damageType,
+		appearance: { colorset: damageType },
+	};
+	await new CONFIG.Dice.DamageRoll(String(damage), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken }));
 	return;
 }
 

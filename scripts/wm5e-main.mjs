@@ -5,6 +5,8 @@ const Constants = {
 	ROLL_SAVE: 'wm5e.rollSaveQuery',
 };
 
+let WM_REFERENCES;
+
 const WM_ACTIONS = {
 	Cleave: async ({ messageId, shiftKey }) => doCleave({ messageId, shiftKey }),
 	Graze: async ({ messageId, shiftKey }) => doGraze({ messageId, shiftKey }),
@@ -23,6 +25,8 @@ Hooks.on('init', () => {
 	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
 });
 
+Hooks.on('ready', () => (WM_REFERENCES = CONFIG.DND5E.weaponMasteries));
+
 async function onActionsClick(event) {
 	let el = event.target;
 
@@ -33,7 +37,7 @@ async function onActionsClick(event) {
 	const shiftKey = event.shiftKey;
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
-	const term = Object.keys(WM_ACTIONS).find((key) => uuid?.includes(key.toLowerCase()));
+	const term = Object.keys(WM_ACTIONS).find((key) => uuid === WM_REFERENCES[key.toLowerCase()].reference);
 
 	if (!tooltip && !term) return;
 
@@ -120,7 +124,6 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 		});
 	}, 0);
 	const select = await selectPromise;
-	console.log(select);
 	if (!select) return false;
 	await new Promise((resolve) => {
 		setTimeout(() => {
@@ -205,7 +208,7 @@ async function doCleave({ messageId, shiftKey }) {
 	if (cleaveAttackRolls?.[0]?.isSuccess) {
 		const damageFormula = activity.damage.parts?.[0]?.formula?.split(/[+-]/)?.[0]?.trim() ?? 0;
 		const finalFormula = useMod ? damageFormula + '' + mod : damageFormula;
-		const damageType = attackRolls[0].options.type;
+		const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
 		const options = {
 			isCritical: cleaveAttackRolls[0].isCritical,
 			type: damageType,
@@ -222,7 +225,7 @@ async function doGraze({ messageId, shiftKey }) {
 	if (attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Graze can only be used on a failed attack roll.');
 	const damage = attacker.system.abilities[activity.ability].mod;
 	if (damage <= 0) return ui.notifications.warn('Graze requires a positive ability modifier to deal damage.');
-	const damageType = attackRolls[0].options.type;
+	const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
 	const options = {
 		type: damageType,
 		appearance: { colorset: damageType },

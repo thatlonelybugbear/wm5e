@@ -1,3 +1,7 @@
+## 13.5220.2
+* Cleave damage roll rework
+  * MidiQOL needs another fix
+
 ## 13.5220.1
 * For 5.2.x, start using `attributes.system.movement.bonus` instead of adding to available movements individually
 * Fix for translations which affect `data-tooltip` alongside the textContent

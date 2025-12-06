@@ -209,12 +209,11 @@ async function doCleave({ messageId, shiftKey }) {
 		const damageFormula = activity.damage.parts?.[0]?.formula?.split(/[+-]/)?.[0]?.trim() ?? 0;
 		const finalFormula = useMod ? damageFormula + '' + mod : damageFormula;
 		const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
-		const options = {
-			isCritical: cleaveAttackRolls[0].isCritical,
-			type: damageType,
-			appearance: { colorset: damageType },
+		const config = {
+			attackMode: 'offhand',
+			isCritical: cleaveAttackRolls[0].isCritical
 		};
-		await new CONFIG.Dice.DamageRoll(String(finalFormula), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: cleaveTarget }));
+		await activity.rollDamage(config);
 	}
 	return setTargets([targetToken.id]);
 }

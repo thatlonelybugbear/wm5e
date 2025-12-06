@@ -1,5 +1,10 @@
 ## 13.5220.1
 * For 5.2.x, start using `attributes.system.movement.bonus` instead of adding to available movements individually
+* Fix for translations which affect `data-tooltip` alongside the textContent
+* Fix for damage types for Cleave and Graze not being correctly identified
+* Fix for targeting when using Cleave
+* Fix for proper ability modifier being used for Cleave, Graze and damage following RAW
+* Fixes for MidiQOL compatibility
 
 ## 13.5200.1
 * System 5.2.0 compatibility bump

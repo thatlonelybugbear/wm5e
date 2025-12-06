@@ -8,14 +8,14 @@ const Constants = {
 let WM_REFERENCES;
 
 const WM_ACTIONS = {
-	Cleave: async ({ messageId, shiftKey }) => doCleave({ messageId, shiftKey }),
-	Graze: async ({ messageId, shiftKey }) => doGraze({ messageId, shiftKey }),
-	Nick: async ({ messageId, shiftKey }) => doNick({ messageId, shiftKey }),
-	Push: async ({ messageId, shiftKey }) => doPush({ messageId, shiftKey }),
-	Sap: async ({ messageId, shiftKey }) => doSap({ messageId, shiftKey }),
-	Slow: async ({ messageId, shiftKey }) => doSlow({ messageId, shiftKey }),
-	Topple: async ({ messageId, shiftKey }) => doTopple({ messageId, shiftKey }),
-	Vex: async ({ messageId, shiftKey }) => doVex({ messageId, shiftKey }),
+	Cleave: async (data) => doCleave(data),
+	Graze: async (data) => doGraze(data),
+	Nick: async (data) => doNick(data),
+	Push: async (data) => doPush(data),
+	Sap: async (data) => doSap(data),
+	Slow: async (data) => doSlow(data),
+	Topple: async (data) => doTopple(data),
+	Vex: async (data) => doVex(data),
 };
 
 Hooks.on('init', () => {
@@ -59,7 +59,7 @@ async function onActionsClick(event) {
 	event.preventDefault();
 	event.stopPropagation();
 	const messageId = el?.closest?.('[data-message-id]')?.dataset?.messageId ?? event?.currentTarget?.dataset?.messageId;
-	await wmAction({ messageId, shiftKey });
+	await wmAction({ messageId, shiftKey, el });
 	return;
 }
 
@@ -182,7 +182,7 @@ function getMessageData(messageId) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-async function doCleave({ messageId, shiftKey }) {
+async function doCleave({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls, originatingMessage, isAuthor } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Cleave can only be used on a successful attack roll.');
@@ -211,14 +211,15 @@ async function doCleave({ messageId, shiftKey }) {
 		const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
 		const config = {
 			attackMode: 'offhand',
-			isCritical: cleaveAttackRolls[0].isCritical
+			isCritical: cleaveAttackRolls[0].isCritical,
 		};
 		await activity.rollDamage(config);
 	}
+	el.style.textDecoration = 'line-through';
 	return setTargets([targetToken.id]);
 }
 
-async function doGraze({ messageId, shiftKey }) {
+async function doGraze({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, targetToken, activity, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Graze can only be used on a failed attack roll.');
@@ -230,14 +231,18 @@ async function doGraze({ messageId, shiftKey }) {
 		appearance: { colorset: damageType },
 	};
 	await new CONFIG.Dice.DamageRoll(String(damage), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken }));
-	return;
+	return (el.style.textDecoration = 'line-through');
 }
 
-async function doNick() {
-	return console.log('Nick action: nothing to implement.');
+async function doNick({ messageId, shiftKey, el }) {
+	const { attackerToken } = getMessageData(messageId) || {};
+	const { text: { content } = {} } = await fromUuid(WM_REFERENCES.nick.reference);
+	const speaker = ChatMessage.implementation.getSpeaker({ token: attackerToken });
+	await ChatMessage.implementation.create({ content, speaker, flavor: 'Mastery Nick' });
+	return (el.style.textDecoration = 'line-through');
 }
 
-async function doPush({ messageId, shiftKey }) {
+async function doPush({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, targetToken, target, activity, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Push can only be used on a successful attack roll.');
@@ -261,11 +266,12 @@ async function doPush({ messageId, shiftKey }) {
 		}
 	}
 	const finalPosition = testNewPosition.result.at(-1);
+	el.style.textDecoration = 'line-through';
 	if (target.isOwner) return targetToken.document.update(finalPosition);
 	else return doQueries('push', { tokenUuid: targetToken.document.uuid, updates: finalPosition });
 }
 
-async function doSap({ messageId, shiftKey }) {
+async function doSap({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Sap can only be used on a successful attack roll.');
@@ -284,9 +290,10 @@ async function doSap({ messageId, shiftKey }) {
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
+	return (el.style.textDecoration = 'line-through');
 }
 
-async function doSlow({ messageId, shiftKey }) {
+async function doSlow({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Slow can only be used on a successful attack roll.');
@@ -311,9 +318,10 @@ async function doSlow({ messageId, shiftKey }) {
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
+	return (el.style.textDecoration = 'line-through');
 }
 
-async function doTopple({ messageId, shiftKey }) {
+async function doTopple({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Topple can only be used on a successful attack roll.');
@@ -339,9 +347,10 @@ async function doTopple({ messageId, shiftKey }) {
 			await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData], options: { keepId: true } });
 		}
 	}
+	return (el.style.textDecoration = 'line-through');
 }
 
-async function doVex({ messageId, shiftKey }) {
+async function doVex({ messageId, shiftKey, el }) {
 	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
 	if (!attackerToken || !targetToken || !activity) return;
 	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Vex can only be used on a successful attack roll.');
@@ -360,6 +369,7 @@ async function doVex({ messageId, shiftKey }) {
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
+	return (el.style.textDecoration = 'line-through');
 }
 
 async function doQueries(type, data) {

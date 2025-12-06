@@ -1,3 +1,6 @@
+## 13.5220.3
+* Strike through the mastery link in the chat message when it is used
+
 ## 13.5220.2
 * Cleave damage roll rework
   * MidiQOL needs another fix

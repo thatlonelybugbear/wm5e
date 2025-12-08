@@ -206,9 +206,9 @@ async function doCleave({ messageId, shiftKey, el }) {
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
 	} else cleaveAttackRolls = await activity.rollAttack();
 	if (cleaveAttackRolls?.[0]?.isSuccess) {
-		const damageFormula = activity.damage.parts?.[0]?.formula?.split(/[+-]/)?.[0]?.trim() ?? 0;
-		const finalFormula = useMod ? damageFormula + '' + mod : damageFormula;
-		const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
+		// const damageFormula = activity.damage.parts?.[0]?.formula?.split(/[+-]/)?.[0]?.trim() ?? 0;
+		// const finalFormula = useMod ? damageFormula + '' + mod : damageFormula;
+		// const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
 		const config = {
 			attackMode: 'offhand',
 			isCritical: cleaveAttackRolls[0].isCritical,

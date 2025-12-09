@@ -1,3 +1,6 @@
+## 13.5220.4
+* Fix for Cleave when MidiQOL is active
+
 ## 13.5220.3
 * Strike through the mastery link in the chat message when it is used
 * The Nick mastery now generates a chat message with its description when used

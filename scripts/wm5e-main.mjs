@@ -134,7 +134,7 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 	return canvas.tokens.get(select);
 }
 
-function createMessageConfig({ activity, target, type = 'damage' }) {
+function createMessageConfig({ activity, target, type = 'damage', rolls }) {
 	const messageConfig = {};
 	messageConfig.speaker = ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() });
 	messageConfig.flavor = 'a';
@@ -159,6 +159,7 @@ function createMessageConfig({ activity, target, type = 'damage' }) {
 		},
 	];
 	messageConfig.flags = flags;
+	if (rolls) messageConfig.rolls = rolls;
 	return messageConfig;
 }
 
@@ -199,21 +200,27 @@ async function doCleave({ messageId, shiftKey, el }) {
 	if (!cleaveTarget) return ui.notifications.info('no targets');
 	const mod = attacker.system.abilities[activity.ability ?? 'str'].mod;
 	const useMod = mod < 0;
-	let cleaveAttackRolls;
-	if (game.modules.get('midi-qol')?.active) {
-		const workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
-		cleaveAttackRolls = await activity.rollAttack({ workflow }, {}, { createMessage: true });
+	let cleaveAttackRolls, workflow;
+	const midiActive = game.modules.get('midi-qol')?.active;
+	if (midiActive) {
+		workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
+		workflow.targetDescriptors = getTargetDescriptors();
+		cleaveAttackRolls = await activity.rollAttack({ workflow });
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
 	} else cleaveAttackRolls = await activity.rollAttack();
 	if (cleaveAttackRolls?.[0]?.isSuccess) {
-		// const damageFormula = activity.damage.parts?.[0]?.formula?.split(/[+-]/)?.[0]?.trim() ?? 0;
-		// const finalFormula = useMod ? damageFormula + '' + mod : damageFormula;
-		// const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
 		const config = {
 			attackMode: 'offhand',
 			isCritical: cleaveAttackRolls[0].isCritical,
 		};
-		await activity.rollDamage(config);
+		if (midiActive) {
+			workflow.attackMode = 'offhand';
+			workflow.isCritical = cleaveAttackRolls[0].isCritical;
+			config.workflow = workflow;
+			const cleaveDamageRolls = await activity.rollDamage(config);
+			const messageConfig = createMessageConfig({ activity, target: cleaveTarget, type: 'damage', rolls: cleaveDamageRolls });
+			await ChatMessage.implementation.create(messageConfig);
+		} else await activity.rollDamage(config);
 	}
 	el.style.textDecoration = 'line-through';
 	return setTargets([targetToken.id]);
@@ -411,4 +418,17 @@ function registerQueries() {
 	CONFIG.queries[Constants.GM_CREATE_EFFECTS] = createEffects;
 	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
 	CONFIG.queries[Constants.PUSH] = pushAction;
+}
+
+function getTargetDescriptors() {
+	const targets = new Map();
+	for (const token of game.user.targets) {
+		const { name } = token;
+		const { img, system, uuid, statuses } = token.actor ?? {};
+		if (uuid) {
+			const ac = statuses.has('coverTotal') ? null : system.attributes?.ac?.value;
+			targets.set(uuid, { name, img, uuid, ac: ac ?? null });
+		}
+	}
+	return Array.from(targets.values());
 }

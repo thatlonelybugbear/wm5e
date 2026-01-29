@@ -480,7 +480,7 @@ function registerSettings() {
 	game.settings.register(Constants.MODULE_ID, 'autoMasteries', {
 		name: 'Auto Masteries',
 		hint: 'Automatically apply mastery effects to attacks and saves.',
-		scope: 'user',
+		scope: 'world',
 		config: true,
 		type: new foundry.data.fields.BooleanField({ initial: false }),
 	});

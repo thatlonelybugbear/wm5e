@@ -38,6 +38,19 @@
 			}
 		]
 	},
+	"languages": [
+		{
+			"lang": "en",
+			"name": "English",
+			"path": "lang/en.json",
+			"flags": {}
+		}
+	],
+	"flags": {
+		"hotReload": {
+			"paths": ["lang/en.json"]
+		}
+	},
 	"bugs": "https://github.com/thatlonelybugbear/wm5e/issues",
 	"url": "https://github.com/thatlonelybugbear/wm5e",
 	"license": "https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/LICENSE",

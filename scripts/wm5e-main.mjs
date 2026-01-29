@@ -480,7 +480,7 @@ function registerSettings() {
 	game.settings.register(Constants.MODULE_ID, 'autoMasteries', {
 		name: 'WM5E.AutoMasteries.Name',
 		hint: 'WM5E.AutoMasteries.Hint',
-		scope: 'world',
+		scope: 'user',
 		config: true,
 		type: new foundry.data.fields.BooleanField({ initial: false }),
 	});

@@ -40,6 +40,15 @@ To open the Journal entries you can instead right click on the mastery link.
 
 SHIFT + left click on the weapon mastery will bypass rules like: "Needs a successful attack to use".
 
+## I installed the module but nothing is happening!
+Your actor needs to have a Mastery on the weapon of choice. To make sure they are setup, toggle the edit mode in the actor's character sheet, locate the "Configure Weapons" and enable the Masteries you want!
+
+<img width="579" height="593" alt="image" src="https://github.com/user-attachments/assets/df562f69-6630-45c8-bd4d-f520afc3f737" />
+
+<img width="594" height="577" alt="image" src="https://github.com/user-attachments/assets/180aeb55-a2ce-4975-9bd1-30e0172c506f" />
+
+
+
 ## Videos (better ones will follow)
 
 

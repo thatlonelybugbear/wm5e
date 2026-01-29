@@ -58,7 +58,6 @@ async function doAutoMasteries() {
 	const parameters = { messageId, shiftKey: false, el };
 
 	if ((action === 'attack' && rollFailure && mastery === 'graze') || (action === 'damage' && rollSuccess && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery))) {
-		// const fN = Object.keys(WM_ACTIONS).find((key) => key === mastery.toUpperCase());
 		await WM_ACTIONS[mastery.capitalize()]?.(parameters);
 		el.style.textDecoration = 'line-through';
 	}

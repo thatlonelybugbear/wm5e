@@ -1,0 +1,8 @@
+{
+	"WM5E": {
+		"AutoMasteries": {
+			"Name": "Automatically Trigger Masteries",
+			"Hint": "When enabled, relevant weapon masteries will be automatically triggered when making attacks with applicable weapons."
+		}
+	}
+}

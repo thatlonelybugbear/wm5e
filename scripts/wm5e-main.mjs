@@ -478,8 +478,8 @@ function getTargetDescriptors() {
 
 function registerSettings() {
 	game.settings.register(Constants.MODULE_ID, 'autoMasteries', {
-		name: 'Auto Masteries',
-		hint: 'Automatically apply mastery effects to attacks and saves.',
+		name: 'WM5E.AutoMasteries.Name',
+		hint: 'WM5E.AutoMasteries.Hint',
 		scope: 'world',
 		config: true,
 		type: new foundry.data.fields.BooleanField({ initial: false }),

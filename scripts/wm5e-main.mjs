@@ -20,12 +20,54 @@ const WM_ACTIONS = {
 
 Hooks.on('init', () => {
 	registerQueries();
+	registerSettings();
 	document.addEventListener('click', onActionsClick, { capture: true });
 	document.addEventListener('pointerdown', onActionsClick, { capture: true, passive: false });
 	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
 });
 
 Hooks.on('ready', () => (WM_REFERENCES = CONFIG.DND5E.weaponMasteries));
+Hooks.on('dnd5e.preRollAttack', (...args) => doPreRollAttack(args));
+Hooks.on('dnd5e.postRollAttack', (...args) => doAutoMasteries(...args, 'attack'));
+Hooks.on('dnd5e.rollDamage', (...args) => doAutoMasteries(...args, 'damage'));
+
+function doPreRollAttack(args) {
+	const [config, dialog] = args;
+	if (config.wm5e) {
+		config.mastery = '';
+		dialog.options.masteryOptions = [];
+	}
+}
+
+async function doAutoMasteries() {
+	if (!isAutoMasteriesEnabled()) return;
+	const [rolls, activity, action] = arguments;
+	const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
+	const attackMessage = getOriginatingAttackMessage(originatingMessageId);
+	if (!attackMessage) return;
+	const mastery = attackMessage.flags?.dnd5e?.roll?.mastery;
+
+	const { isCritical, isFailure, isFumble, isSuccess } = attackMessage.rolls?.[0] ?? {};
+
+	if (!mastery) return;
+	const rollSuccess = isCritical || isSuccess;
+	const rollFailure = isFumble || isFailure;
+	const messageId = attackMessage.id;
+
+	const el = document.querySelector(`[data-message-id="${messageId}"]`)?.querySelector(`a[data-tooltip="${mastery.capitalize()}"]`);
+	const parameters = { messageId, shiftKey: false, el };
+
+	if ((action === 'attack' && rollFailure && mastery === 'graze') || (action === 'damage' && rollSuccess && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery))) {
+		// const fN = Object.keys(WM_ACTIONS).find((key) => key === mastery.toUpperCase());
+		await WM_ACTIONS[mastery.capitalize()]?.(parameters);
+		el.style.textDecoration = 'line-through';
+	}
+}
+
+function getOriginatingAttackMessage(messageId) {
+	const attackMessage = dnd5e.registry.messages.get(messageId)?.findLast((m) => m.flags.dnd5e?.roll?.type === 'attack');
+	return attackMessage;
+}
 
 async function onActionsClick(event) {
 	let el = event.target;
@@ -34,6 +76,7 @@ async function onActionsClick(event) {
 		el = el.closest('a');
 		if (!el) return;
 	}
+
 	const shiftKey = event.shiftKey;
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
@@ -205,9 +248,10 @@ async function doCleave({ messageId, shiftKey, el }) {
 	if (midiActive) {
 		workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
 		workflow.targetDescriptors = getTargetDescriptors();
+		workflow.wm5e = true;
 		cleaveAttackRolls = await activity.rollAttack({ workflow });
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
-	} else cleaveAttackRolls = await activity.rollAttack();
+	} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true });
 	if (cleaveAttackRolls?.[0]?.isSuccess) {
 		const config = {
 			attackMode: 'offhand',
@@ -431,4 +475,18 @@ function getTargetDescriptors() {
 		}
 	}
 	return Array.from(targets.values());
+}
+
+function registerSettings() {
+	game.settings.register(Constants.MODULE_ID, 'autoMasteries', {
+		name: 'Auto Masteries',
+		hint: 'Automatically apply mastery effects to attacks and saves.',
+		scope: 'user',
+		config: true,
+		type: new foundry.data.fields.BooleanField({ initial: false }),
+	});
+}
+
+function isAutoMasteriesEnabled() {
+	return game.settings.get(Constants.MODULE_ID, 'autoMasteries');
 }

@@ -1,3 +1,8 @@
+## 13.5220.5
+* Verified compatibility with D&D5e v5.2.5
+* Added setting to automatically trigger relevant masteries
+* Fixed an issue where Cleave could be retriggered after a Cleave attack.
+
 ## 13.5220.4
 * Fix for Cleave when MidiQOL is active
 

@@ -1,10 +1,10 @@
-## 13.5220.5.2
+## 13.5250.1.2
 * Fix for PUSH query not being registered
 
-## 13.5220.5.1
+## 13.5250.1.1
 * Change the automatic masteries setting to be per user.
 
-## 13.5220.5
+## 13.5250.1
 * Verified compatibility with D&D5e v5.2.5
 * Added setting to automatically trigger relevant masteries
 * Fixed an issue where Cleave could be retriggered after a Cleave attack.

@@ -3,6 +3,7 @@ const Constants = {
 	MODULE_NAME: 'Weapon Masteries 5e',
 	GM_CREATE_EFFECTS: 'wm5e.createEffectsQuery',
 	ROLL_SAVE: 'wm5e.rollSaveQuery',
+	PUSH: 'wm5e.pushToken',
 };
 
 let WM_REFERENCES;

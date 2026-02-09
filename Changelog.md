@@ -1,3 +1,12 @@
+## 13.5250.2
+* Improved save query routing so saving throws are requested from the relevant active player when possible, with active GM fallback.
+* Topple mastery fix.
+* Improved weapon mastery chat interactions for players.
+  * Non-owners of a chat message can now open and close linked Journal entries on left click (extends default system behavior with close support).
+  * Masteries are now visually marked as used in chat with strikethrough plus `(used)`.
+* Added module CSS (`styles.css`) for mastery used-state styling and related UI cleanup.
+* Added localization support for mastery notification messages via `WM5E.Notifications.*`.
+
 ## 13.5250.1.2
 * Fix for PUSH query not being registered
 

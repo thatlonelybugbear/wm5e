@@ -16,6 +16,7 @@
 		"verified": "13.351"
 	},
 	"esmodules": ["scripts/wm5e-main.mjs"],
+	"styles": ["styles/styles.css"],
 	"relationships": {
 		"systems": [
 			{

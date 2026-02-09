@@ -1,4 +1,4 @@
-const Constants = {
+﻿const Constants = {
 	MODULE_ID: 'wm5e',
 	MODULE_NAME: 'Weapon Masteries 5e',
 	GM_CREATE_EFFECTS: 'wm5e.createEffectsQuery',
@@ -7,6 +7,7 @@ const Constants = {
 };
 
 let WM_REFERENCES;
+let LISTENERS_REGISTERED = false;
 
 const WM_ACTIONS = {
 	Cleave: async (data) => doCleave(data),
@@ -19,15 +20,22 @@ const WM_ACTIONS = {
 	Vex: async (data) => doVex(data),
 };
 
+function i18n(key) {
+	return game.i18n.localize(`WM5E.${key}`);
+}
+
 Hooks.on('init', () => {
 	registerQueries();
 	registerSettings();
-	document.addEventListener('click', onActionsClick, { capture: true });
-	document.addEventListener('pointerdown', onActionsClick, { capture: true, passive: false });
-	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
 });
 
-Hooks.on('ready', () => (WM_REFERENCES = CONFIG.DND5E.weaponMasteries));
+Hooks.on('ready', () => {
+	WM_REFERENCES = CONFIG.DND5E.weaponMasteries;
+	if (LISTENERS_REGISTERED) return;
+	document.addEventListener('click', onActionsClick, { capture: true });
+	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
+	LISTENERS_REGISTERED = true;
+});
 Hooks.on('dnd5e.preRollAttack', (...args) => doPreRollAttack(args));
 Hooks.on('dnd5e.postRollAttack', (...args) => doAutoMasteries(...args, 'attack'));
 Hooks.on('dnd5e.rollDamage', (...args) => doAutoMasteries(...args, 'damage'));
@@ -53,14 +61,14 @@ async function doAutoMasteries() {
 	if (!mastery) return;
 	const rollSuccess = isCritical || isSuccess;
 	const rollFailure = isFumble || isFailure;
-	const messageId = attackMessage.id;
 
-	const el = document.querySelector(`[data-message-id="${messageId}"]`)?.querySelector(`a[data-tooltip="${mastery.capitalize()}"]`);
-	const parameters = { messageId, shiftKey: false, el };
+	const messageEl = document.querySelector(`[data-message-id="${attackMessage.id}"]`);
+	const el = findMasteryAnchor(messageEl, mastery);
+	const parameters = { message: attackMessage, shiftKey: false, el };
 
 	if ((action === 'attack' && rollFailure && mastery === 'graze') || (action === 'damage' && rollSuccess && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery))) {
-		await WM_ACTIONS[mastery.capitalize()]?.(parameters);
-		el.style.textDecoration = 'line-through';
+		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.(parameters);
+		if (used) markUsed(el);
 	}
 }
 
@@ -81,10 +89,12 @@ async function onActionsClick(event) {
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
 	const term = Object.keys(WM_ACTIONS).find((key) => uuid === WM_REFERENCES[key.toLowerCase()].reference);
+	const messageId = el?.closest?.('[data-message-id]')?.dataset?.messageId ?? event?.currentTarget?.dataset?.messageId;
+	const message = game.messages.get(messageId);
 
-	if (!tooltip && !term) return;
+	if (!message?.isOwner || (!tooltip && !term)) return;
 
-	if (event.button === 2) {
+	if (event.type === 'contextmenu') {
 		// if the user right clicks, reinstate the original left click open Journal action
 		event.preventDefault();
 		event.stopImmediatePropagation();
@@ -92,7 +102,9 @@ async function onActionsClick(event) {
 		const JournalEntry = await fromUuid(uuid);
 		const target = el.closest('a[data-link]') ?? el;
 		const anchor = target?.dataset?.hash ?? null;
-		return JournalEntry?.parent?.sheet?.render(true, { pageId: JournalEntry.id, anchor });
+		const sheet = JournalEntry?.parent?.sheet;
+		if (sheet?.rendered) return sheet.close({ force: true });
+		else return sheet?.render(true, { pageId: JournalEntry.id, anchor });
 	}
 	if (event.type !== 'click') return;
 	const wmAction = WM_ACTIONS[tooltip] || WM_ACTIONS[term];
@@ -101,8 +113,9 @@ async function onActionsClick(event) {
 
 	event.preventDefault();
 	event.stopPropagation();
-	const messageId = el?.closest?.('[data-message-id]')?.dataset?.messageId ?? event?.currentTarget?.dataset?.messageId;
-	await wmAction({ messageId, shiftKey, el });
+
+	const used = await wmAction({ message, shiftKey, el });
+	if (used) markUsed(el);
 	return;
 }
 
@@ -114,58 +127,80 @@ function setTargets(targetIds, { mode = 'replace' } = {}) {
 	return canvas.tokens.setTargets(targetIds, { mode });
 }
 
-async function promptTargetSelection(targets, multiple, title = 'Select Target') {
+const TARGET_DIALOG_SELECTOR = '.application.dialog.wm5e-target-dialog';
+
+async function prepareTargetSelectionData(targets) {
+	const preparedTargets = [];
 	for (const t of targets) {
 		let img = t.document.texture.src;
 		if (foundry.helpers.media.VideoHelper.hasVideoExtension(img)) {
 			img = (await game.video?.createThumbnail(img, { width: 50, height: 50 })) ?? '';
 		}
-		t.wm5e = { img };
+		preparedTargets.push({ id: t.id, name: t.name, img });
 	}
+	return preparedTargets;
+}
+
+function getLatestTargetDialogElement() {
+	const dialogs = document.querySelectorAll(TARGET_DIALOG_SELECTOR);
+	return dialogs[dialogs.length - 1] ?? null;
+}
+
+function decorateTargetDialog(dialogEl, preparedTargets) {
+	if (!dialogEl || dialogEl.dataset.wm5eDecorated === 'true') return false;
+	dialogEl.dataset.wm5eDecorated = 'true';
+
+	dialogEl.addEventListener('pointerover', (ev) => {
+		const btn = ev.target.closest('button');
+		if (!btn || !dialogEl.contains(btn)) return;
+		const id = btn.getAttribute('data-action');
+		if (!id) return;
+		setTargets([id]);
+	});
+
+	dialogEl.addEventListener('pointerout', (ev) => {
+		const btn = ev.target.closest('button');
+		if (!btn || !dialogEl.contains(btn)) return;
+		setTargets([]);
+	});
+
+	for (const t of preparedTargets) {
+		const btn = dialogEl.querySelector(`button[data-action="${t.id}"]`);
+		if (!btn || btn.dataset.wm5eDecorated === 'true') continue;
+		btn.dataset.wm5eDecorated = 'true';
+		btn.classList.add('target-btn', `target-${t.id}`);
+		btn.dataset.targetId = t.id;
+		const img = document.createElement('img');
+		img.src = t.img;
+		img.alt = '';
+		img.className = 'target-icon';
+		btn.prepend(img);
+	}
+
+	return true;
+}
+
+function scheduleTargetDialogDecoration(preparedTargets, attempts = 8) {
+	let remaining = attempts;
+	const tryDecorate = () => {
+		const dialogEl = getLatestTargetDialogElement();
+		if (decorateTargetDialog(dialogEl, preparedTargets)) return;
+		remaining -= 1;
+		if (remaining > 0) requestAnimationFrame(tryDecorate);
+	};
+	requestAnimationFrame(tryDecorate);
+}
+
+async function promptTargetSelection(targets, multiple, title = 'Select Target') {
+	const preparedTargets = await prepareTargetSelectionData(targets);
 	const selectPromise = foundry.applications.api.DialogV2.wait({
 		window: { title },
 		content: `<p>Choose ${multiple} target(s):</p>`,
-		modal: false, //true,  // block other UI interactions?
-		buttons: targets.map((t) => ({ label: t.name, img: t.wm5e.img, action: t.id })), //@to-do: rework the icon into the element as this doesn't work
-		classes: ['wm5e'],
+		modal: false,
+		buttons: preparedTargets.map((t) => ({ label: t.name, action: t.id })),
+		classes: ['wm5e', 'wm5e-target-dialog'],
 	});
-	setTimeout(() => {
-		const dialogEl = document.querySelector('.application.dialog.wm5e');
-		if (!dialogEl) return;
-
-		dialogEl.addEventListener('pointerover', (ev) => {
-			const btn = ev.target.closest('button');
-			if (!btn) return;
-			const id = btn.getAttribute('data-action'); // DialogV2 sets button action in data-action
-			if (!id) return;
-			setTargets([id]);
-		});
-
-		dialogEl.addEventListener('pointerout', (ev) => {
-			const btn = ev.target.closest('button');
-			if (!btn) return;
-			setTargets([]);
-		});
-
-		const btns = Array.from(dialogEl.querySelectorAll('button')).slice(2); //@to-do: check robustness
-		btns.forEach((btn, i) => {
-			const t = targets[i];
-			if (!t) return;
-			btn.classList.add('target-btn', `target-${t.id}`);
-			const img = document.createElement('img');
-			img.src = t.wm5e.img;
-			img.alt = '';
-			img.className = 'target-icon'; //maybe for CSS
-			img.width = 50;
-			img.height = 50;
-			img.style.width = '50px';
-			img.style.height = '50px';
-			img.style.objectFit = 'cover';
-			img.style.flex = '0 0 50px';
-			btn.prepend(img);
-			btn.dataset.targetId = t.id; //is there any need?
-		});
-	}, 0);
+	scheduleTargetDialogDecoration(preparedTargets);
 	const select = await selectPromise;
 	if (!select) return false;
 	await new Promise((resolve) => {
@@ -206,8 +241,7 @@ function createMessageConfig({ activity, target, type = 'damage', rolls }) {
 	return messageConfig;
 }
 
-function getMessageData(messageId) {
-	const message = game.messages.get(messageId);
+function getMessageData(message) {
 	if (!message) return;
 	const {
 		flags: { dnd5e: { activity: { uuid: activityUuid }, item: { uuid: itemUuid }, originatingMessage, roll, targets } = {} },
@@ -226,21 +260,30 @@ function getMessageData(messageId) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-async function doCleave({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls, originatingMessage, isAuthor } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Cleave can only be used on a successful attack roll.');
+async function doCleave({ message, shiftKey, el }) {
+	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls, originatingMessage, isAuthor } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (!attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.CleaveRequiresSuccess'));
+		return false;
+	}
 
 	const range = activity.range.reach || gridUnitDistance();
 	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
 
 	const inRangeTarget = ac5e.checkNearby(targetToken, 'ally', gridUnitDistance());
 	const validTargets = inRangeAttacker.filter((t1) => inRangeTarget.some((t2) => t2.id === t1.id));
-	if (!validTargets.length) return ui.notifications.warn('No valid targets in range for Cleave.');
+	if (!validTargets.length) {
+		ui.notifications.warn(i18n('Notifications.CleaveNoTargetsInRange'));
+		return false;
+	}
 
 	if (validTargets.length === 1) setTargets(validTargets);
 	const cleaveTarget = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.');
-	if (!cleaveTarget) return ui.notifications.info('no targets');
+	if (!cleaveTarget) {
+		ui.notifications.info(i18n('Notifications.NoTargets'));
+		return false;
+	}
 	const mod = attacker.system.abilities[activity.ability ?? 'str'].mod;
 	const useMod = mod < 0;
 	let cleaveAttackRolls, workflow;
@@ -266,39 +309,52 @@ async function doCleave({ messageId, shiftKey, el }) {
 			await ChatMessage.implementation.create(messageConfig);
 		} else await activity.rollDamage(config);
 	}
-	el.style.textDecoration = 'line-through';
-	return setTargets([targetToken.id]);
+	await setTargets([targetToken.id]);
+	return true;
 }
 
-async function doGraze({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, targetToken, activity, attackRolls } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Graze can only be used on a failed attack roll.');
-	const damage = attacker.system.abilities[activity.ability].mod;
-	if (damage <= 0) return ui.notifications.warn('Graze requires a positive ability modifier to deal damage.');
+async function doGraze({ message, shiftKey, el }) {
+	const { attacker, attackerToken, targetToken, activity, attackRolls } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.GrazeRequiresFailure'));
+		return false;
+	}
+	const damage = attacker.system.abilities[activity.ability ?? 'str'].mod;
+	if (damage <= 0) {
+		ui.notifications.warn(i18n('Notifications.GrazeRequiresPositiveModifier'));
+		return false;
+	}
 	const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
 	const options = {
 		type: damageType,
 		appearance: { colorset: damageType },
 	};
 	await new CONFIG.Dice.DamageRoll(String(damage), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken }));
-	return (el.style.textDecoration = 'line-through');
+	return true;
 }
 
-async function doNick({ messageId, shiftKey, el }) {
-	const { attackerToken } = getMessageData(messageId) || {};
+async function doNick({ message, shiftKey, el }) {
+	const { attackerToken } = getMessageData(message) || {};
+	if (!attackerToken) return false;
 	const { text: { content } = {} } = await fromUuid(WM_REFERENCES.nick.reference);
 	const speaker = ChatMessage.implementation.getSpeaker({ token: attackerToken });
 	await ChatMessage.implementation.create({ content, speaker, flavor: 'Mastery Nick' });
-	return (el.style.textDecoration = 'line-through');
+	return true;
 }
 
-async function doPush({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, targetToken, target, activity, attackRolls } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Push can only be used on a successful attack roll.');
+async function doPush({ message, shiftKey, el }) {
+	const { attacker, attackerToken, targetToken, target, activity, attackRolls } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (!attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.PushRequiresSuccess'));
+		return false;
+	}
 	const targetTokenSize = Math.max(targetToken.document.width, targetToken.document.height);
-	if (targetTokenSize > 2 && !shiftKey) return ui.notifications.warn('You can only push large or smaller targets.');
+	if (targetTokenSize > 2 && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.PushSizeLimit'));
+		return false;
+	}
 	const maxDistance = 2 * gridUnitDistance();
 	const { angle } = new foundry.canvas.geometry.Ray(attackerToken, targetToken);
 	const direction = Math.normalizeDegrees(Math.toDegrees(angle));
@@ -313,20 +369,31 @@ async function doPush({ messageId, shiftKey, el }) {
 			initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction - 45, maxDistance);
 			snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
 			testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
-			if (testNewPosition.result.length === 1) return ui.notifications.warn('Nowhere to push the target.');
+			if (testNewPosition.result.length === 1) {
+				ui.notifications.warn(i18n('Notifications.PushNoSpace'));
+				return false;
+			}
 		}
 	}
 	const finalPosition = testNewPosition.result.at(-1);
-	el.style.textDecoration = 'line-through';
-	if (target.isOwner) return targetToken.document.update(finalPosition);
-	else return doQueries('push', { tokenUuid: targetToken.document.uuid, updates: finalPosition });
+	let pushed;
+	if (target.isOwner) pushed = await targetToken.document.update(finalPosition);
+	else pushed = await doQueries('push', { tokenUuid: targetToken.document.uuid, updates: finalPosition });
+	if (!pushed) return false;
+	return true;
 }
 
-async function doSap({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Sap can only be used on a successful attack roll.');
-	if (target.appliedEffects.some((ae) => ae.name === 'Sap' && ae.origin === item.uuid)) return ui.notifications.warn('Target is already sapped.');
+async function doSap({ message, shiftKey, el }) {
+	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (!attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.SapRequiresSuccess'));
+		return false;
+	}
+	if (target.appliedEffects.some((ae) => ae.name === 'Sap' && ae.origin === item.uuid)) {
+		ui.notifications.warn(i18n('Notifications.SapAlreadyApplied'));
+		return false;
+	}
 	const effectData = {
 		name: 'Sap',
 		img: 'icons/skills/wounds/injury-face-impact-orange.webp',
@@ -341,15 +408,19 @@ async function doSap({ messageId, shiftKey, el }) {
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
-	return (el.style.textDecoration = 'line-through');
+	return true;
 }
 
-async function doSlow({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Slow can only be used on a successful attack roll.');
+async function doSlow({ message, shiftKey, el }) {
+	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (!attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.SlowRequiresSuccess'));
+		return false;
+	}
 	if (target.appliedEffects.some((ae) => ae.name === 'Slow (Weapon Mastery)')) {
-		return ui.notifications.warn('Target is already slowed.');
+		ui.notifications.warn(i18n('Notifications.SlowAlreadyApplied'));
+		return false;
 	}
 	const movementTypes = Object.entries(target.system.attributes.movement).filter(([key, value]) => key !== 'hover' && value > 0);
 	let changes;
@@ -369,43 +440,44 @@ async function doSlow({ messageId, shiftKey, el }) {
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
-	return (el.style.textDecoration = 'line-through');
+	return true;
 }
 
-async function doTopple({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Topple can only be used on a successful attack roll.');
-	if (target.statuses.prone) return ui.notifications.warn('Target is already prone.');
-	const ability = 'con';
-	const dc = attacker.system.abilities[activity.ability].dc;
-	if (target.isOwner) {
-		const [saveResult] = await target.rollSavingThrow({ ability, target: dc }, {}, { data: { flavor: `${item.name} - Topple Save` } });
-		if (saveResult?.total < dc) {
-			const effectData = foundry.utils.duplicate(await ActiveEffect.implementation.fromStatusEffect('prone'));
-			effectData.origin = item.uuid;
-			effectData.flags = effectData.flags || {};
-			effectData.flags.wm5e = { source: 'Topple action' };
-			await target.createEmbeddedDocuments('ActiveEffect', [effectData], { keepId: true });
-		}
-	} else {
-		const [saveResult] = await doQueries('rollSave', { actorUuid: target.uuid, ability, dc, flavor: `${item.name} - Topple Save` });
-		if (saveResult?.total < dc) {
-			const effectData = foundry.utils.duplicate(await ActiveEffect.implementation.fromStatusEffect('prone'));
-			effectData.origin = item.uuid;
-			effectData.flags = effectData.flags || {};
-			effectData.flags.wm5e = { source: 'Topple action' };
-			await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData], options: { keepId: true } });
-		}
+async function doTopple({ message, shiftKey, el }) {
+	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (!attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.ToppleRequiresSuccess'));
+		return false;
 	}
-	return (el.style.textDecoration = 'line-through');
+	if (target.statuses.prone) {
+		ui.notifications.warn(i18n('Notifications.ToppleAlreadyProne'));
+		return false;
+	}
+	const ability = 'con';
+	const dc = attacker.system.abilities[activity.ability ?? 'str'].dc;
+	const saveRoll = await doQueries('rollSave', { actorUuid: target.uuid, ability, dc, flavor: `${item.name} - Topple Save` });
+	if (saveRoll?.isSuccess) return true;
+	const effectData = foundry.utils.duplicate(await ActiveEffect.implementation.fromStatusEffect('prone'));
+	effectData.origin = item.uuid;
+	effectData.flags = effectData.flags || {};
+	effectData.flags.wm5e = { source: 'Topple action' };
+	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData], { keepId: true });
+	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData], options: { keepId: true } });
+	return true;
 }
 
-async function doVex({ messageId, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(messageId) || {};
-	if (!attackerToken || !targetToken || !activity) return;
-	if (!attackRolls[0].isSuccess && !shiftKey) return ui.notifications.warn('Vex can only be used on a successful attack roll.');
-	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === 'Vex')) return ui.notifications.warn('Target is already affected by your Vex.');
+async function doVex({ message, shiftKey, el }) {
+	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	if (!attackerToken || !targetToken || !activity) return false;
+	if (!attackRolls[0].isSuccess && !shiftKey) {
+		ui.notifications.warn(i18n('Notifications.VexRequiresSuccess'));
+		return false;
+	}
+	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === 'Vex')) {
+		ui.notifications.warn(i18n('Notifications.VexAlreadyApplied'));
+		return false;
+	}
 	const effectData = {
 		name: 'Vex',
 		img: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
@@ -420,7 +492,7 @@ async function doVex({ messageId, shiftKey, el }) {
 	};
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
-	return (el.style.textDecoration = 'line-through');
+	return true;
 }
 
 async function doQueries(type, data) {
@@ -428,11 +500,14 @@ async function doQueries(type, data) {
 	if (!activeGM) return false;
 	try {
 		if (type === 'createEffects') {
-			await activeGM.query(Constants.GM_CREATE_EFFECTS, data);
+			return activeGM.query(Constants.GM_CREATE_EFFECTS, data);
 		} else if (type === 'rollSave') {
-			await activeGM.query(Constants.ROLL_SAVE, data);
+			const actor = await fromUuid(data.actorUuid);
+			const user = getPlayerForActor(actor);
+			if (user?.active) return user.query(Constants.ROLL_SAVE, data);
+			else return activeGM.query(Constants.ROLL_SAVE, data);
 		} else if (type === 'push') {
-			await activeGM.query(Constants.PUSH, data);
+			return activeGM.query(Constants.PUSH, data);
 		}
 		return true;
 	} catch (err) {
@@ -454,7 +529,7 @@ async function pushAction({ tokenUuid, updates }) {
 async function rollSavingThrow({ actorUuid, ability, dc, flavor }) {
 	const actor = await fromUuid(actorUuid);
 	if (!actor) return false;
-	return actor?.rollAbilitySave({ ability, target: dc }, {}, { data: { flavor } });
+	return actor?.rollSavingThrow({ ability, target: dc }, {}, { data: { flavor } });
 }
 
 function registerQueries() {
@@ -489,4 +564,72 @@ function registerSettings() {
 
 function isAutoMasteriesEnabled() {
 	return game.settings.get(Constants.MODULE_ID, 'autoMasteries');
+}
+
+// Resolve an active user who can respond to actor-targeted queries.
+function getPlayerForActor(actor) {
+	if (!actor) return undefined;
+	const players = game.users?.players ?? [];
+	const activePlayers = players.filter((p) => p.active);
+	const ownership = actor.ownership ?? {};
+	const ownerLevel = CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
+	const inheritLevel = CONST.DOCUMENT_OWNERSHIP_LEVELS.INHERIT;
+	const hasOwnerPermission = (user) => {
+		if (!user) return false;
+		const explicitLevel = ownership[user.id];
+		if (explicitLevel === ownerLevel) return true;
+		if (explicitLevel !== undefined && explicitLevel !== inheritLevel) return false;
+		return ownership.default === ownerLevel;
+	};
+
+	// Prefer the active player currently linked to this actor.
+	let user = activePlayers.find((p) => p.character?.id === actor.id);
+	if (user) return user;
+
+	// Then any active player with owner permission.
+	user = activePlayers.find(hasOwnerPermission);
+	if (user) return user;
+
+	// If all else fails, use any active GM.
+	return game.users.activeGM ?? undefined;
+}
+
+function markUsed(el) {
+	if (!el) return;
+
+	if (!el.classList.contains('wm5e-used')) {
+		const label = document.createElement('span');
+		label.className = 'wm5e-used-label';
+		while (el.firstChild) label.append(el.firstChild);
+		el.append(label);
+		el.classList.add('wm5e-used');
+	}
+
+	if (el.querySelector('.wm5e-used-note')) return;
+	const usedNote = document.createElement('span');
+	usedNote.className = 'wm5e-used-note';
+	usedNote.textContent = '(used)';
+	el.append(usedNote);
+	return true;
+}
+
+function toMasteryLabel(masteryKey) {
+	if (!masteryKey) return '';
+	return `${masteryKey[0].toUpperCase()}${masteryKey.slice(1)}`;
+}
+
+function getMasteryReference(masteryKey) {
+	return WM_REFERENCES?.[masteryKey]?.reference ?? '';
+}
+
+function findMasteryAnchor(root, masteryKey) {
+	if (!root?.querySelector || !masteryKey) return null;
+	const reference = getMasteryReference(masteryKey);
+	if (reference) {
+		const byUuid = root.querySelector(`a[data-uuid="${reference}"]`);
+		if (byUuid) return byUuid;
+	}
+	const label = toMasteryLabel(masteryKey);
+	if (!label) return null;
+	return root.querySelector(`a[data-tooltip="${label}"]`);
 }

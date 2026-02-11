@@ -1,3 +1,6 @@
+## 13.5250.2.1
+* Actually fix Topple mastery...
+
 ## 13.5250.2
 * Improved save query routing so saving throws are requested from the relevant active player when possible, with active GM fallback.
 * Topple mastery fix.

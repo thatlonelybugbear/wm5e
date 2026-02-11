@@ -456,8 +456,8 @@ async function doTopple({ message, shiftKey, el }) {
 	}
 	const ability = 'con';
 	const dc = attacker.system.abilities[activity.ability ?? 'str'].dc;
-	const saveRoll = await doQueries('rollSave', { actorUuid: target.uuid, ability, dc, flavor: `${item.name} - Topple Save` });
-	if (saveRoll?.isSuccess) return true;
+	const saveRolls = await doQueries('rollSave', { actorUuid: target.uuid, ability, dc, flavor: `${item.name} - Topple Save` });
+	if (saveRolls?.[0]?.total >= dc) return true;
 	const effectData = foundry.utils.duplicate(await ActiveEffect.implementation.fromStatusEffect('prone'));
 	effectData.origin = item.uuid;
 	effectData.flags = effectData.flags || {};

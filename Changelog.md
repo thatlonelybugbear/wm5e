@@ -1,5 +1,5 @@
 ## 13.5250.4
-* Added Polish translation. Contribution by [delgar89](<https://github.com/delgar89>) :hugging:
+* Added Polish translation. Contribution by [delgar89](<https://github.com/delgar89>) 🤗
 
 ## 13.5250.3
 * Localization keys for effect names.

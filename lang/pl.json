@@ -1,0 +1,31 @@
+{
+	"WM5E": {
+		"AutoMasteries": {
+			"Name": "Automatyczne aktywowanie mistrzostw",
+			"Hint": "Po włączeniu (każdy użytkownik musi włączyć osobno) odpowiednie mistrzostwa broni będą automatycznie aktywowane podczas wykonywania ataków właściwą bronią."
+		},
+		"Effects": {
+			"Sap": "Osłabienie",
+			"SlowWeaponMastery": "Spowolnienie (Mistrzostwo broni)",
+			"Vex": "Nękanie"
+		},
+		"Notifications": {
+			"CleaveRequiresSuccess": "Szerokie cięcie można użyć tylko przy udanym teście ataku.",
+			"CleaveNoTargetsInRange": "Brak prawidłowych celów w zasięgu dla Szerokiego cięcia.",
+			"NoTargets": "Nie wybrano celów.",
+			"GrazeRequiresFailure": "Draśnięcie można użyć tylko przy nieudanym teście ataku.",
+			"GrazeRequiresPositiveModifier": "Draśnięcie wymaga dodatniego modyfikatora cechy, aby zadać obrażenia.",
+			"PushRequiresSuccess": "Popchnięcie można użyć tylko przy udanym teście ataku.",
+			"PushSizeLimit": "Możesz popchnąć tylko cele Duże lub mniejsze.",
+			"PushNoSpace": "Brak miejsca, aby popchnąć cel.",
+			"SapRequiresSuccess": "Osłabienie można użyć tylko przy udanym teście ataku.",
+			"SapAlreadyApplied": "Cel jest już osłabiony.",
+			"SlowRequiresSuccess": "Spowolnienie można użyć tylko przy udanym teście ataku.",
+			"SlowAlreadyApplied": "Cel jest już spowolniony.",
+			"ToppleRequiresSuccess": "Obalenie można użyć tylko przy udanym teście ataku.",
+			"ToppleAlreadyProne": "Cel jest już powalony.",
+			"VexRequiresSuccess": "Nękanie można użyć tylko przy udanym teście ataku.",
+			"VexAlreadyApplied": "Cel jest już objęty twoim Nękaniem."
+		}
+	}
+}

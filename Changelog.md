@@ -1,5 +1,5 @@
-## 13.5250.3.1
-* Added Polish localization (pl.json). (contributed by @delgar89)
+## 13.5250.4
+* Added Polish translation. Contribution by [delgar89](<https://github.com/delgar89>) :hugging:
 
 ## 13.5250.3
 * Localization keys for effect names.

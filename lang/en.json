@@ -4,6 +4,11 @@
 			"Name": "Automatically Trigger Masteries",
 			"Hint": "When enabled (each user must enable separately), relevant weapon masteries will be automatically triggered when making attacks with applicable weapons."
 		},
+		"Effects": {
+			"Sap": "Sap",
+			"SlowWeaponMastery": "Slow (Weapon Mastery)",
+			"Vex": "Vex"
+		},
 		"Notifications": {
 			"CleaveRequiresSuccess": "Cleave can only be used on a successful attack roll.",
 			"CleaveNoTargetsInRange": "No valid targets in range for Cleave.",

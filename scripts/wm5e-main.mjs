@@ -24,6 +24,10 @@ function i18n(key) {
 	return game.i18n.localize(`WM5E.${key}`);
 }
 
+function effectName(key) {
+	return i18n(`Effects.${key}`);
+}
+
 Hooks.on('init', () => {
 	registerQueries();
 	registerSettings();
@@ -390,12 +394,12 @@ async function doSap({ message, shiftKey, el }) {
 		ui.notifications.warn(i18n('Notifications.SapRequiresSuccess'));
 		return false;
 	}
-	if (target.appliedEffects.some((ae) => ae.name === 'Sap' && ae.origin === item.uuid)) {
+	if (target.appliedEffects.some((ae) => ae.name === effectName('Sap') && ae.origin === item.uuid)) {
 		ui.notifications.warn(i18n('Notifications.SapAlreadyApplied'));
 		return false;
 	}
 	const effectData = {
-		name: 'Sap',
+		name: effectName('Sap'),
 		img: 'icons/skills/wounds/injury-face-impact-orange.webp',
 		origin: item.uuid,
 		disabled: false,
@@ -418,7 +422,7 @@ async function doSlow({ message, shiftKey, el }) {
 		ui.notifications.warn(i18n('Notifications.SlowRequiresSuccess'));
 		return false;
 	}
-	if (target.appliedEffects.some((ae) => ae.name === 'Slow (Weapon Mastery)')) {
+	if (target.appliedEffects.some((ae) => ae.name === effectName('SlowWeaponMastery'))) {
 		ui.notifications.warn(i18n('Notifications.SlowAlreadyApplied'));
 		return false;
 	}
@@ -427,7 +431,7 @@ async function doSlow({ message, shiftKey, el }) {
 	if (foundry.utils.isNewerVersion(game.system.version, '5.2.0')) changes = [{ key: 'system.attributes.movement.bonus', mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2 * gridUnitDistance() }];
 	else changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2 * gridUnitDistance() }));
 	const effectData = {
-		name: 'Slow (Weapon Mastery)',
+		name: effectName('SlowWeaponMastery'),
 		img: 'icons/magic/movement/chevrons-down-yellow.webp',
 		origin: item.uuid,
 		disabled: false,
@@ -474,12 +478,12 @@ async function doVex({ message, shiftKey, el }) {
 		ui.notifications.warn(i18n('Notifications.VexRequiresSuccess'));
 		return false;
 	}
-	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === 'Vex')) {
+	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === effectName('Vex'))) {
 		ui.notifications.warn(i18n('Notifications.VexAlreadyApplied'));
 		return false;
 	}
 	const effectData = {
-		name: 'Vex',
+		name: effectName('Vex'),
 		img: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
 		origin: item.uuid,
 		disabled: false,

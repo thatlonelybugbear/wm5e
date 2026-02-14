@@ -1,3 +1,6 @@
+## 13.5250.3
+* Localization keys for effect names.
+
 ## 13.5250.2.1
 * Actually fix Topple mastery...
 

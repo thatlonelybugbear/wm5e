@@ -127,6 +127,32 @@ function gridUnitDistance() {
 	return canvas?.grid?.distance || 5;
 }
 
+function getActivityDamageType(activity, attackRoll) {
+	const defaultDamageType = attackRoll?.options?.['automated-conditions-5e']?.options?.defaultDamageType;
+	if (defaultDamageType && typeof defaultDamageType === 'object') {
+		const [type] = Object.keys(defaultDamageType);
+		if (type) return type;
+	}
+
+	for (const part of activity?.damage?.parts ?? []) {
+		if (part?.type) return part.type;
+		if (part?.types instanceof Set) {
+			const [type] = part.types;
+			if (type) return type;
+		}
+		if (Array.isArray(part?.types) && part.types.length) return part.types[0];
+	}
+
+	const baseTypes = activity?.item?.system?.damage?.base?.types;
+	if (baseTypes instanceof Set) {
+		const [type] = baseTypes;
+		if (type) return type;
+	}
+	if (Array.isArray(baseTypes) && baseTypes.length) return baseTypes[0];
+
+	return null;
+}
+
 function setTargets(targetIds, { mode = 'replace' } = {}) {
 	return canvas.tokens.setTargets(targetIds, { mode });
 }
@@ -247,8 +273,11 @@ function createMessageConfig({ activity, target, type = 'damage', rolls }) {
 
 function getMessageData(message) {
 	if (!message) return;
+	const dnd5eFlags = message.flags?.dnd5e ?? {};
+	const activityUuid = dnd5eFlags.activity?.uuid;
+	const itemUuid = dnd5eFlags.item?.uuid;
+	const { originatingMessage, roll, targets } = dnd5eFlags;
 	const {
-		flags: { dnd5e: { activity: { uuid: activityUuid }, item: { uuid: itemUuid }, originatingMessage, roll, targets } = {} },
 		speaker,
 		rolls: attackRolls,
 		isAuthor,
@@ -264,13 +293,27 @@ function getMessageData(message) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-async function doCleave({ message, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls, originatingMessage, isAuthor } = getMessageData(message) || {};
-	if (!attackerToken || !targetToken || !activity) return false;
-	if (!attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.CleaveRequiresSuccess'));
-		return false;
+function getActionContext({ message, shiftKey, requireSuccess, warning }) {
+	const data = getMessageData(message);
+	if (!data) return null;
+
+	const { attackRolls } = data;
+	const attackRoll = attackRolls?.[0];
+	if (!attackRoll) return null;
+
+	if (!shiftKey && (attackRoll.isSuccess !== requireSuccess)) {
+		ui.notifications.warn(i18n(warning));
+		return null;
 	}
+
+	return { ...data, attackRoll };
+}
+
+async function doCleave({ message, shiftKey, el }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.CleaveRequiresSuccess' });
+	if (!context) return false;
+	const { attacker, attackerToken, target, targetToken, activity, item, originatingMessage, isAuthor } = context;
+	if (!attackerToken || !targetToken || !activity) return false;
 
 	const range = activity.range.reach || gridUnitDistance();
 	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
@@ -318,22 +361,23 @@ async function doCleave({ message, shiftKey, el }) {
 }
 
 async function doGraze({ message, shiftKey, el }) {
-	const { attacker, attackerToken, targetToken, activity, attackRolls } = getMessageData(message) || {};
+	const context = getActionContext({ message, shiftKey, requireSuccess: false, warning: 'Notifications.GrazeRequiresFailure' });
+	if (!context) return false;
+	const { attacker, attackerToken, targetToken, activity, attackRoll } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.GrazeRequiresFailure'));
-		return false;
-	}
-	const damage = attacker.system.abilities[activity.ability ?? 'str'].mod;
+	const abilityId = activity.ability ?? 'str';
+	const ability = attacker?.system?.abilities?.[abilityId];
+	if (!ability) return false;
+	const damage = ability.mod;
 	if (damage <= 0) {
 		ui.notifications.warn(i18n('Notifications.GrazeRequiresPositiveModifier'));
 		return false;
 	}
-	const damageType = Object.keys(attackRolls[0].options['automated-conditions-5e'].options.defaultDamageType)[0];
-	const options = {
+	const damageType = getActivityDamageType(activity, attackRoll);
+	const options = damageType ? {
 		type: damageType,
 		appearance: { colorset: damageType },
-	};
+	} : {};
 	await new CONFIG.Dice.DamageRoll(String(damage), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken }));
 	return true;
 }
@@ -348,12 +392,10 @@ async function doNick({ message, shiftKey, el }) {
 }
 
 async function doPush({ message, shiftKey, el }) {
-	const { attacker, attackerToken, targetToken, target, activity, attackRolls } = getMessageData(message) || {};
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess' });
+	if (!context) return false;
+	const { attacker, attackerToken, targetToken, target, activity } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (!attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.PushRequiresSuccess'));
-		return false;
-	}
 	const targetTokenSize = Math.max(targetToken.document.width, targetToken.document.height);
 	if (targetTokenSize > 2 && !shiftKey) {
 		ui.notifications.warn(i18n('Notifications.PushSizeLimit'));
@@ -388,12 +430,10 @@ async function doPush({ message, shiftKey, el }) {
 }
 
 async function doSap({ message, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SapRequiresSuccess' });
+	if (!context) return false;
+	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (!attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.SapRequiresSuccess'));
-		return false;
-	}
 	if (target.appliedEffects.some((ae) => ae.name === effectName('Sap') && ae.origin === item.uuid)) {
 		ui.notifications.warn(i18n('Notifications.SapAlreadyApplied'));
 		return false;
@@ -416,12 +456,10 @@ async function doSap({ message, shiftKey, el }) {
 }
 
 async function doSlow({ message, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SlowRequiresSuccess' });
+	if (!context) return false;
+	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (!attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.SlowRequiresSuccess'));
-		return false;
-	}
 	if (target.appliedEffects.some((ae) => ae.name === effectName('SlowWeaponMastery'))) {
 		ui.notifications.warn(i18n('Notifications.SlowAlreadyApplied'));
 		return false;
@@ -448,12 +486,10 @@ async function doSlow({ message, shiftKey, el }) {
 }
 
 async function doTopple({ message, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.ToppleRequiresSuccess' });
+	if (!context) return false;
+	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (!attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.ToppleRequiresSuccess'));
-		return false;
-	}
 	if (target.statuses.prone) {
 		ui.notifications.warn(i18n('Notifications.ToppleAlreadyProne'));
 		return false;
@@ -472,12 +508,10 @@ async function doTopple({ message, shiftKey, el }) {
 }
 
 async function doVex({ message, shiftKey, el }) {
-	const { attacker, attackerToken, target, targetToken, activity, item, attackRolls } = getMessageData(message) || {};
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.VexRequiresSuccess' });
+	if (!context) return false;
+	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (!attackRolls[0].isSuccess && !shiftKey) {
-		ui.notifications.warn(i18n('Notifications.VexRequiresSuccess'));
-		return false;
-	}
 	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === effectName('Vex'))) {
 		ui.notifications.warn(i18n('Notifications.VexAlreadyApplied'));
 		return false;

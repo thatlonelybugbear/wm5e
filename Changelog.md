@@ -1,3 +1,7 @@
+## 13.5250.5
+* Fix for Graze crashing on click when AC5e damage metadata is missing.
+* Hardens shared message parsing and attack roll access.
+
 ## 13.5250.4
 * Added Polish translation. Contribution by [delgar89](<https://github.com/delgar89>) 🤗
 

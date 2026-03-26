@@ -27,3 +27,24 @@ a.wm5e-used {
 	text-decoration: none;
 	font-weight: 500;
 }
+
+.wm5e-mastery-field {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+a.wm5e-mastery-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	padding: 0;
+	flex: 0 0 auto;
+	line-height: 1;
+}
+
+a.wm5e-mastery-link[hidden] {
+	display: none;
+}

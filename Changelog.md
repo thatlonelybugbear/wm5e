@@ -1,3 +1,8 @@
+## 13.5250.6
+* Added a weapon mastery reference icon to dnd5e item sheets when the selected mastery has a linked Journal entry or page.
+* Hovering the icon shows the mastery Journal tooltip, and clicking it toggles the linked Journal open or closed.
+* Fixed automatic weapon mastery triggering with MidiQOL when attack and damage rolls are merged into the same workflow/message flow.
+
 ## 13.5250.5
 * Fix for Graze crashing on click when AC5e damage metadata is missing.
 * Hardens shared message parsing and attack roll access.

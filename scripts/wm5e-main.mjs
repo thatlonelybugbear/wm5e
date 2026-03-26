@@ -8,6 +8,8 @@
 
 let WM_REFERENCES;
 let LISTENERS_REGISTERED = false;
+const PENDING_AUTO_MASTERY_CONTEXT = new Map();
+const PENDING_AUTO_MASTERY_MAX_AGE_MS = 60000;
 
 const WM_ACTIONS = {
 	Cleave: async (data) => doCleave(data),
@@ -40,6 +42,7 @@ Hooks.on('ready', () => {
 	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
 	LISTENERS_REGISTERED = true;
 });
+Hooks.on('renderItemSheet5e', (...args) => onRenderItemSheet(...args));
 Hooks.on('dnd5e.preRollAttack', (...args) => doPreRollAttack(args));
 Hooks.on('dnd5e.postRollAttack', (...args) => doAutoMasteries(...args, 'attack'));
 Hooks.on('dnd5e.rollDamage', (...args) => doAutoMasteries(...args, 'damage'));
@@ -54,31 +57,100 @@ function doPreRollAttack(args) {
 
 async function doAutoMasteries() {
 	if (!isAutoMasteriesEnabled()) return;
-	const [rolls, activity, action] = arguments;
-	const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
-	const attackMessage = getOriginatingAttackMessage(originatingMessageId);
-	if (!attackMessage) return;
-	const mastery = attackMessage.flags?.dnd5e?.roll?.mastery;
+	prunePendingAutoMasteryContext();
+	const [rolls, activityContext, action] = arguments;
+	const activity = getHookSubject(activityContext);
+	const midiActive = game.modules.get('midi-qol')?.active ?? false;
+	const pendingContext = activity?.uuid ? PENDING_AUTO_MASTERY_CONTEXT.get(activity.uuid) : null;
+	let attackMessage;
+	let mastery;
+	let attackResult;
 
-	const { isCritical, isFailure, isFumble, isSuccess } = attackMessage.rolls?.[0] ?? {};
+	if (midiActive) {
+		mastery = rolls?.[0]?.options?.mastery ?? pendingContext?.mastery ?? '';
+		attackResult = action === 'attack' ? summarizeAttackResult(rolls?.[0]) : pendingContext?.attackResult;
+		attackMessage = pendingContext?.messageId ? game.messages.get(pendingContext.messageId) : null;
+		if (!attackMessage) attackMessage = await findRelevantMessageForActivity(activity);
+		if (activity?.uuid && (mastery || attackMessage?.id || attackResult)) {
+			PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, {
+				mastery: mastery || pendingContext?.mastery || '',
+				messageId: attackMessage?.id ?? pendingContext?.messageId ?? null,
+				attackResult: attackResult ?? pendingContext?.attackResult ?? null,
+				timestamp: Date.now(),
+			});
+		}
+	} else {
+		const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
+		attackMessage = getOriginatingAttackMessage(originatingMessageId);
+		mastery = attackMessage?.flags?.dnd5e?.roll?.mastery;
+		attackResult = summarizeAttackResult(attackMessage?.rolls?.[0]);
+	}
+
+	if (!attackMessage && !attackResult) return;
 
 	if (!mastery) return;
+	const { isCritical, isFailure, isFumble, isSuccess } = attackResult ?? summarizeAttackResult(attackMessage?.rolls?.[0]);
 	const rollSuccess = isCritical || isSuccess;
 	const rollFailure = isFumble || isFailure;
 
-	const messageEl = document.querySelector(`[data-message-id="${attackMessage.id}"]`);
+	const messageEl = attackMessage?.id ? document.querySelector(`[data-message-id="${attackMessage.id}"]`) : null;
 	const el = findMasteryAnchor(messageEl, mastery);
 	const parameters = { message: attackMessage, shiftKey: false, el };
 
-	if ((action === 'attack' && rollFailure && mastery === 'graze') || (action === 'damage' && rollSuccess && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery))) {
+	const shouldTrigger = (action === 'attack' && rollFailure && mastery === 'graze') || (action === 'damage' && rollSuccess && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
+	if (shouldTrigger) {
 		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.(parameters);
 		if (used) markUsed(el);
+	}
+	if (midiActive && activity?.uuid && (action === 'damage' || shouldTrigger)) {
+		PENDING_AUTO_MASTERY_CONTEXT.delete(activity.uuid);
 	}
 }
 
 function getOriginatingAttackMessage(messageId) {
 	const attackMessage = dnd5e.registry.messages.get(messageId)?.findLast((m) => m.flags.dnd5e?.roll?.type === 'attack');
 	return attackMessage;
+}
+
+function getHookSubject(context) {
+	return context?.subject ?? context ?? null;
+}
+
+function summarizeAttackResult(roll) {
+	if (!roll) return null;
+	const { isCritical = false, isFailure = false, isFumble = false, isSuccess = false } = roll;
+	return { isCritical, isFailure, isFumble, isSuccess };
+}
+
+function prunePendingAutoMasteryContext(now = Date.now()) {
+	for (const [activityUuid, context] of PENDING_AUTO_MASTERY_CONTEXT.entries()) {
+		if ((now - (context?.timestamp ?? 0)) <= PENDING_AUTO_MASTERY_MAX_AGE_MS) continue;
+		PENDING_AUTO_MASTERY_CONTEXT.delete(activityUuid);
+	}
+}
+
+async function findRelevantMessageForActivity(activity, attempts = 6, delayMs = 25) {
+	if (!activity?.uuid) return null;
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		const message = getRecentRelevantMessageForActivity(activity);
+		if (message) return message;
+		await new Promise((resolve) => setTimeout(resolve, delayMs));
+	}
+	return null;
+}
+
+function getRecentRelevantMessageForActivity(activity) {
+	if (!activity?.uuid) return null;
+	const messages = game.messages?.contents ?? [];
+	let activityMatch = null;
+	for (let i = messages.length - 1; i >= 0; i -= 1) {
+		const message = messages[i];
+		if (message?.flags?.dnd5e?.activity?.uuid !== activity.uuid) continue;
+		if (message?.flags?.dnd5e?.roll?.type === 'attack') return message;
+		if (message?.rolls?.[0]?.options?.rollType === 'attack') return message;
+		activityMatch ||= message;
+	}
+	return activityMatch;
 }
 
 async function onActionsClick(event) {
@@ -89,10 +161,22 @@ async function onActionsClick(event) {
 		if (!el) return;
 	}
 
+	if (el.classList?.contains('wm5e-mastery-reference')) {
+		if (event.type === 'click') {
+			event.preventDefault();
+			event.stopPropagation();
+			return toggleMasteryReference(el.dataset?.uuid, el.dataset?.hash ?? null);
+		}
+		if (event.type !== 'contextmenu') return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		return closeMasteryReference(el.dataset?.uuid);
+	}
+
 	const shiftKey = event.shiftKey;
 	const tooltip = el.dataset?.tooltip;
 	const uuid = el.dataset?.uuid;
-	const term = Object.keys(WM_ACTIONS).find((key) => uuid === WM_REFERENCES[key.toLowerCase()].reference);
+	const term = Object.keys(WM_ACTIONS).find((key) => uuid === getMasteryReference(key.toLowerCase()));
 	const messageId = el?.closest?.('[data-message-id]')?.dataset?.messageId ?? event?.currentTarget?.dataset?.messageId;
 	const message = game.messages.get(messageId);
 
@@ -121,6 +205,108 @@ async function onActionsClick(event) {
 	const used = await wmAction({ message, shiftKey, el });
 	if (used) markUsed(el);
 	return;
+}
+
+function onRenderItemSheet(app, html) {
+	const masterySelects = html.querySelectorAll('select[name="system.mastery"]');
+	for (const select of masterySelects) {
+		ensureMasteryLink(select);
+		syncMasteryLink(select);
+		if (select.dataset.wm5eMasteryBound === 'true') continue;
+		select.addEventListener('change', () => syncMasteryLink(select));
+		select.dataset.wm5eMasteryBound = 'true';
+	}
+}
+
+function ensureMasteryLink(select) {
+	const parent = select?.parentElement;
+	if (!parent) return null;
+	parent.classList.add('wm5e-mastery-field');
+	let link = parent.querySelector('.wm5e-mastery-link');
+	if (link) return link;
+
+	link = document.createElement('a');
+	link.className = 'wm5e-mastery-link wm5e-mastery-reference content-link';
+	link.setAttribute('draggable', 'true');
+	link.dataset.link = '';
+	link.setAttribute('aria-label', 'Open weapon mastery reference');
+	link.innerHTML = '<i class="fas fa-book-open" aria-hidden="true"></i>';
+	parent.append(link);
+	return link;
+}
+
+function syncMasteryReferenceElement(el, masteryKey, uuid) {
+	const label = toMasteryLabel(masteryKey);
+	const docType = uuid.startsWith('JournalEntryPage.') ? 'JournalEntryPage' : 'JournalEntry';
+	el.dataset.uuid = uuid;
+	el.dataset.tooltip = label;
+	el.dataset.link = '';
+	el.dataset.type = docType;
+	el.setAttribute('aria-label', `${label} reference`);
+	el.setAttribute('data-tooltip-direction', 'UP');
+}
+
+function syncMasteryLink(select) {
+	const link = ensureMasteryLink(select);
+	if (!link) return;
+
+	const masteryKey = select?.value;
+	const label = toMasteryLabel(masteryKey);
+	const uuid = getMasteryReference(masteryKey);
+
+	if (!masteryKey || !uuid) {
+		link.hidden = true;
+		delete link.dataset.uuid;
+		delete link.dataset.tooltip;
+		delete link.dataset.hash;
+		return;
+	}
+
+	const docType = uuid.startsWith('JournalEntryPage.') ? 'JournalEntryPage' : 'JournalEntry';
+	link.hidden = false;
+	link.dataset.uuid = uuid;
+	link.dataset.tooltip = label;
+	link.dataset.link = '';
+	link.dataset.type = docType;
+	link.setAttribute('aria-label', `${label} reference`);
+	link.setAttribute('data-tooltip-direction', 'UP');
+}
+
+async function openMasteryReference(uuid, anchor = null) {
+	if (!uuid) return;
+	const documentRef = await fromUuid(uuid);
+	if (!documentRef) return;
+
+	if (documentRef.documentName === 'JournalEntryPage') {
+		const sheet = documentRef.parent?.sheet;
+		return sheet?.render(true, { pageId: documentRef.id, anchor });
+	}
+
+	return documentRef.sheet?.render(true);
+}
+
+async function toggleMasteryReference(uuid, anchor = null) {
+	if (!uuid) return;
+	const documentRef = await fromUuid(uuid);
+	if (!documentRef) return;
+	const sheet = getMasteryReferenceSheet(documentRef);
+	if (sheet?.rendered) return sheet.close({ force: true });
+	return openMasteryReference(uuid, anchor);
+}
+
+async function closeMasteryReference(uuid) {
+	if (!uuid) return;
+	const documentRef = await fromUuid(uuid);
+	if (!documentRef) return;
+	const sheet = getMasteryReferenceSheet(documentRef);
+	if (!sheet?.rendered) return;
+	return sheet.close({ force: true });
+}
+
+function getMasteryReferenceSheet(documentRef) {
+	if (!documentRef) return null;
+	if (documentRef.documentName === 'JournalEntryPage') return documentRef.parent?.sheet ?? null;
+	return documentRef.sheet ?? null;
 }
 
 function gridUnitDistance() {
@@ -319,6 +505,8 @@ async function doCleave({ message, shiftKey, el }) {
 	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
 
 	const inRangeTarget = ac5e.checkNearby(targetToken, 'ally', gridUnitDistance());
+
+	console.log(inRangeAttacker, inRangeTarget);
 	const validTargets = inRangeAttacker.filter((t1) => inRangeTarget.some((t2) => t2.id === t1.id));
 	if (!validTargets.length) {
 		ui.notifications.warn(i18n('Notifications.CleaveNoTargetsInRange'));
@@ -385,7 +573,7 @@ async function doGraze({ message, shiftKey, el }) {
 async function doNick({ message, shiftKey, el }) {
 	const { attackerToken } = getMessageData(message) || {};
 	if (!attackerToken) return false;
-	const { text: { content } = {} } = await fromUuid(WM_REFERENCES.nick.reference);
+	const { text: { content } = {} } = await fromUuid(getMasteryReference('nick'));
 	const speaker = ChatMessage.implementation.getSpeaker({ token: attackerToken });
 	await ChatMessage.implementation.create({ content, speaker, flavor: 'Mastery Nick' });
 	return true;
@@ -657,7 +845,7 @@ function toMasteryLabel(masteryKey) {
 }
 
 function getMasteryReference(masteryKey) {
-	return WM_REFERENCES?.[masteryKey]?.reference ?? '';
+	return WM_REFERENCES?.[masteryKey]?.reference ?? WM_REFERENCES?.[masteryKey]?.uuid ?? '';
 }
 
 function findMasteryAnchor(root, masteryKey) {

@@ -1,3 +1,6 @@
+## 14.530.1
+* Compatibility bump for Foundry VTT 14.8.x and D&D5e 5.3.0.
+
 ## 13.5250.6
 * Added a weapon mastery reference icon to dnd5e item sheets when the selected mastery has a linked Journal entry or page.
 * Hovering the icon shows the mastery Journal tooltip, and clicking it toggles the linked Journal open or closed.

@@ -1,4 +1,4 @@
-﻿const Constants = {
+const Constants = {
 	MODULE_ID: 'wm5e',
 	MODULE_NAME: 'Weapon Masteries 5e',
 	GM_CREATE_EFFECTS: 'wm5e.createEffectsQuery',
@@ -124,7 +124,7 @@ function summarizeAttackResult(roll) {
 
 function prunePendingAutoMasteryContext(now = Date.now()) {
 	for (const [activityUuid, context] of PENDING_AUTO_MASTERY_CONTEXT.entries()) {
-		if ((now - (context?.timestamp ?? 0)) <= PENDING_AUTO_MASTERY_MAX_AGE_MS) continue;
+		if (now - (context?.timestamp ?? 0) <= PENDING_AUTO_MASTERY_MAX_AGE_MS) continue;
 		PENDING_AUTO_MASTERY_CONTEXT.delete(activityUuid);
 	}
 }
@@ -463,13 +463,7 @@ function getMessageData(message) {
 	const activityUuid = dnd5eFlags.activity?.uuid;
 	const itemUuid = dnd5eFlags.item?.uuid;
 	const { originatingMessage, roll, targets } = dnd5eFlags;
-	const {
-		speaker,
-		rolls: attackRolls,
-		isAuthor,
-		speakerActor: attacker,
-		author,
-	} = message;
+	const { speaker, rolls: attackRolls, isAuthor, speakerActor: attacker, author } = message;
 
 	const attackerToken = canvas.tokens.get(speaker.token);
 	const target = fromUuidSync(targets?.[0]?.uuid);
@@ -487,7 +481,7 @@ function getActionContext({ message, shiftKey, requireSuccess, warning }) {
 	const attackRoll = attackRolls?.[0];
 	if (!attackRoll) return null;
 
-	if (!shiftKey && (attackRoll.isSuccess !== requireSuccess)) {
+	if (!shiftKey && attackRoll.isSuccess !== requireSuccess) {
 		ui.notifications.warn(i18n(warning));
 		return null;
 	}
@@ -562,10 +556,13 @@ async function doGraze({ message, shiftKey, el }) {
 		return false;
 	}
 	const damageType = getActivityDamageType(activity, attackRoll);
-	const options = damageType ? {
-		type: damageType,
-		appearance: { colorset: damageType },
-	} : {};
+	const options =
+		damageType ?
+			{
+				type: damageType,
+				appearance: { colorset: damageType },
+			}
+		:	{};
 	await new CONFIG.Dice.DamageRoll(String(damage), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken }));
 	return true;
 }
@@ -632,12 +629,21 @@ async function doSap({ message, shiftKey, el }) {
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { rounds: 1, turn: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
+		duration: { expiry: 'turnEnd', turns: 1, units: 'turns' },
+		start: {
+			combatant: attackerToken.combatant?.id,
+			combat: game.combat?.id,
+			initiative: attackerToken.combatant?.initiative,
+			round: game.combat?.round ?? '',
+			turn: attackerToken.combatant.turnNumber,
+			time: game.time.worldTime,
+		},
 		changes: [{ key: 'flags.automated-conditions-5e.attack.disadvantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once;' }],
 		flags: {
 			wm5e: { source: 'Sap action' },
 		},
 	};
+	if (attackerToken.combatant.turnNumber > game.combat.turn) effectData.duration.turns = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
@@ -662,12 +668,21 @@ async function doSlow({ message, shiftKey, el }) {
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { rounds: 1, turns: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
+		duration: { expiry: 'turnEnd', turns: 1, units: 'turns' },
+		start: {
+			combatant: attackerToken.combatant?.id,
+			combat: game.combat?.id,
+			initiative: attackerToken.combatant?.initiative,
+			round: game.combat?.round ?? '',
+			turn: attackerToken.combatant.turnNumber,
+			time: game.time.worldTime,
+		},
 		changes,
 		flags: {
 			wm5e: { source: 'Slow action' },
 		},
 	};
+	if (attackerToken.combatant.turnNumber > game.combat.turn) effectData.duration.turns = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
@@ -710,12 +725,21 @@ async function doVex({ message, shiftKey, el }) {
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { rounds: 1, turns: 1, startTurn: game.combat?.turn ?? '', startRound: game.combat?.round ?? '', startTime: game.time.worldTime },
+		duration: { expiry: 'turnEnd', turns: 1, units: 'turns' },
+		start: {
+			combatant: attackerToken.combatant?.id,
+			combat: game.combat?.id,
+			initiative: attackerToken.combatant?.initiative,
+			round: game.combat?.round ?? '',
+			turn: attackerToken.combatant.turnNumber,
+			time: game.time.worldTime,
+		},
 		changes: [{ key: 'flags.automated-conditions-5e.grants.attack.advantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once; effectOriginTokenId === tokenId && hasAttack' }],
 		flags: {
 			wm5e: { source: 'Vex action' },
 		},
 	};
+	if (attackerToken.combatant.turnNumber > game.combat.turn) effectData.duration.turns = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;

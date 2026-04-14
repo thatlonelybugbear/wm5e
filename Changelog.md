@@ -1,3 +1,7 @@
+## 14.530.2
+* Reworked effect expiration for Foundry VTT v14.
+* Set minimum supported version to v14.
+
 ## 14.530.1
 * Compatibility bump for Foundry VTT 14 and D&D5e 5.3.0.
 

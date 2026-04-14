@@ -2,7 +2,7 @@
 	"id": "wm5e",
 	"title": "Automated Masteries 5e",
 	"description": "A Foundry VTT module to automate 5e system's weapon masteries (requires Automated Conditions 5e module)",
-	"version": "14.530.1",
+	"version": "14.530.2",
 	"authors": [
 		{
 			"name": "thatlonelybugbear",
@@ -12,8 +12,8 @@
 		}
 	],
 	"compatibility": {
-		"minimum": "13",
-		"verified": "13.351"
+		"minimum": "14",
+		"verified": "14.360"
 	},
 	"esmodules": ["scripts/wm5e-main.mjs"],
 	"styles": ["styles/styles.css"],
@@ -23,9 +23,9 @@
 				"id": "dnd5e",
 				"type": "system",
 				"compatibility": {
-					"minimum": "5.1.0",
+					"minimum": "5.3.0",
 					"maximum": "6.0",
-					"verified": "5.3.0"
+					"verified": "5.3.1"
 				}
 			}
 		],
@@ -34,7 +34,7 @@
 				"id": "automated-conditions-5e",
 				"type": "module",
 				"compatibility": {
-					"minimum": "13.5110.8.5"
+					"minimum": "13.5300.1"
 				}
 			}
 		]
@@ -61,6 +61,6 @@
 	"url": "https://github.com/thatlonelybugbear/wm5e",
 	"license": "https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/LICENSE",
 	"manifest": "https://github.com/thatlonelybugbear/wm5e/releases/latest/download/module.json",
-	"download": "https://github.com/thatlonelybugbear/wm5e/releases/download/v14.530.1/module.zip",
+	"download": "https://github.com/thatlonelybugbear/wm5e/releases/download/v14.530.2/module.zip",
 	"changelog": "https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/Changelog.md"
 }

@@ -1,3 +1,7 @@
+## 14.531.1
+* Compatibility bump for D&D5E v5.3.1
+* Minimum Automated Conditions 5e version set to v14.351.1
+
 ## 14.530.2
 * Reworked effect expiration for Foundry VTT v14.
 * Set minimum supported version to v14.

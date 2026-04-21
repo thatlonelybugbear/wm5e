@@ -1,3 +1,6 @@
+## 14.531.2
+* Refactor duration property in effect data.
+
 ## 14.531.1
 * Compatibility bump for D&D5E v5.3.1
 * Minimum Automated Conditions 5e version set to v14.351.1

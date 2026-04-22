@@ -1,3 +1,6 @@
+## 14.531.2.1
+* I lied. But now I did fix for errors reading `turnNumber` out of combat...
+
 ## 14.531.2
 * Refactor duration property in effect data.
 * Fix for errors reading `turnNumber` out of combat

@@ -1,5 +1,7 @@
 ## 14.531.2
 * Refactor duration property in effect data.
+* Fix for errors reading `turnNumber` out of combat
+* Change `Sap` expiration, to turn start.
 
 ## 14.531.1
 * Compatibility bump for D&D5E v5.3.1

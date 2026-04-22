@@ -643,7 +643,7 @@ async function doSap({ message, shiftKey, el }) {
 			wm5e: { source: 'Sap action' },
 		},
 	};
-	if (attackerToken.combatant.turnNumber > game.combat.turn) effectData.duration.value = 0;
+	if (attackerToken.combatant?.turnNumber > game.combat?.turn) effectData.duration.value = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
@@ -682,7 +682,7 @@ async function doSlow({ message, shiftKey, el }) {
 			wm5e: { source: 'Slow action' },
 		},
 	};
-	if (attackerToken.combatant.turnNumber > game.combat.turn) effectData.duration.value = 0;
+	if (attackerToken.combatant?.turnNumber > game.combat?.turn) effectData.duration.value = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
@@ -739,7 +739,7 @@ async function doVex({ message, shiftKey, el }) {
 			wm5e: { source: 'Vex action' },
 		},
 	};
-	if (attackerToken.combatant.turnNumber > game.combat.turn) effectData.duration.value = 0;
+	if (attackerToken.combatant?.turnNumber > game.combat?.turn) effectData.duration.value = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;

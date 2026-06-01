@@ -117,7 +117,7 @@ function getHookSubject(context) {
 function summarizeAttackResult(roll) {
 	if (!roll) return null;
 	const { isCritical = false, isFailure = false, isFumble = false, isSuccess = false } = roll;
-	return { isCritical, isFailure, isFumble, isSuccess, isHit: isCritical || (isSuccess && !isFumble), isMiss: isFumble || (isFailure && !isSuccess) };
+	return { isCritical, isFailure, isFumble, isSuccess, isHit: isCritical || (isSuccess && !isFumble), isMiss: isFumble || (isFailure && !isCritical) };
 }
 
 function prunePendingAutoMasteryContext(now = Date.now()) {

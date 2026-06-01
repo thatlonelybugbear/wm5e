@@ -1,4 +1,4 @@
-const Constants = {
+﻿const Constants = {
 	MODULE_ID: 'wm5e',
 	MODULE_NAME: 'Weapon Masteries 5e',
 	GM_CREATE_EFFECTS: 'wm5e.createEffectsQuery',
@@ -89,15 +89,13 @@ async function doAutoMasteries() {
 	if (!attackMessage && !attackResult) return;
 
 	if (!mastery) return;
-	const { isCritical, isFailure, isFumble, isSuccess } = attackResult ?? summarizeAttackResult(attackMessage?.rolls?.[0]);
-	const rollSuccess = isCritical || isSuccess;
-	const rollFailure = isFumble || isFailure;
+	const { isCritical, isFailure, isFumble, isSuccess, isHit, isMiss } = attackResult ?? summarizeAttackResult(attackMessage?.rolls?.[0]);
 
 	const messageEl = attackMessage?.id ? document.querySelector(`[data-message-id="${attackMessage.id}"]`) : null;
 	const el = findMasteryAnchor(messageEl, mastery);
 	const parameters = { message: attackMessage, shiftKey: false, el };
 
-	const shouldTrigger = (action === 'attack' && rollFailure && mastery === 'graze') || (action === 'damage' && rollSuccess && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
+	const shouldTrigger = (action === 'attack' && isMiss && mastery === 'graze') || (action === 'damage' && isHit && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
 	if (shouldTrigger) {
 		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.(parameters);
 		if (used) markUsed(el);
@@ -119,7 +117,7 @@ function getHookSubject(context) {
 function summarizeAttackResult(roll) {
 	if (!roll) return null;
 	const { isCritical = false, isFailure = false, isFumble = false, isSuccess = false } = roll;
-	return { isCritical, isFailure, isFumble, isSuccess };
+	return { isCritical, isFailure, isFumble, isSuccess, isHit: isCritical || (isSuccess && !isFumble), isMiss: isFumble || (isFailure && !isSuccess) };
 }
 
 function prunePendingAutoMasteryContext(now = Date.now()) {
@@ -428,10 +426,10 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 	return canvas.tokens.get(select);
 }
 
-function createMessageConfig({ activity, target, type = 'damage', rolls }) {
+function createMessageConfig({ activity, target, type = 'damage', rolls, flavor }) {
 	const messageConfig = {};
 	messageConfig.speaker = ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() });
-	messageConfig.flavor = 'a';
+	messageConfig.flavor = flavor || 'a';
 	const flags = { dnd5e: {} };
 	flags.dnd5e.roll = { type };
 	const { item } = activity;
@@ -473,7 +471,7 @@ function getMessageData(message) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-function getActionContext({ message, shiftKey, requireSuccess, warning }) {
+function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning }) {
 	const data = getMessageData(message);
 	if (!data) return null;
 
@@ -481,10 +479,12 @@ function getActionContext({ message, shiftKey, requireSuccess, warning }) {
 	const attackRoll = attackRolls?.[0];
 	if (!attackRoll) return null;
 
-	if (!shiftKey && attackRoll.isSuccess !== requireSuccess) {
+	const { isHit, isMiss } = summarizeAttackResult(attackRoll);
+
+	if (!shiftKey && ((requireSuccess && isMiss) || (requireFailure && isHit))) {
 		ui.notifications.warn(i18n(warning));
 		return null;
-	}
+	};
 
 	return { ...data, attackRoll };
 }
@@ -496,12 +496,11 @@ async function doCleave({ message, shiftKey, el }) {
 	if (!attackerToken || !targetToken || !activity) return false;
 
 	const range = activity.range.reach || gridUnitDistance();
+
 	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
-
-	const inRangeTarget = ac5e.checkNearby(targetToken, 'ally', gridUnitDistance());
-
-	console.log(inRangeAttacker, inRangeTarget);
+	const inRangeTarget = ac5e.checkNearby(targetToken, 'all', gridUnitDistance());
 	const validTargets = inRangeAttacker.filter((t1) => inRangeTarget.some((t2) => t2.id === t1.id));
+
 	if (!validTargets.length) {
 		ui.notifications.warn(i18n('Notifications.CleaveNoTargetsInRange'));
 		return false;
@@ -543,15 +542,15 @@ async function doCleave({ message, shiftKey, el }) {
 }
 
 async function doGraze({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: false, warning: 'Notifications.GrazeRequiresFailure' });
+	const context = getActionContext({ message, shiftKey, requireFailure: true, warning: 'Notifications.GrazeRequiresFailure' });
 	if (!context) return false;
 	const { attacker, attackerToken, targetToken, activity, attackRoll } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
 	const abilityId = activity.ability ?? 'str';
 	const ability = attacker?.system?.abilities?.[abilityId];
 	if (!ability) return false;
-	const damage = ability.mod;
-	if (damage <= 0) {
+	const mod = ability.mod;
+	if (mod <= 0) {
 		ui.notifications.warn(i18n('Notifications.GrazeRequiresPositiveModifier'));
 		return false;
 	}
@@ -563,7 +562,7 @@ async function doGraze({ message, shiftKey, el }) {
 				appearance: { colorset: damageType },
 			}
 		:	{};
-	await new CONFIG.Dice.DamageRoll(String(damage), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken }));
+	await new CONFIG.Dice.DamageRoll(String(mod), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken, flavor: `${activity.item.name} - Graze`, type: 'damage' }));
 	return true;
 }
 

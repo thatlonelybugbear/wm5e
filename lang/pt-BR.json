@@ -1,0 +1,31 @@
+﻿{
+	"WM5E": {
+		"AutoMasteries": {
+			"Name": "Acionar Masteries Automaticamente",
+			"Hint": "Quando ativado (cada usuário deve habilitar separadamente), as masteries de armas relevantes serão acionadas automaticamente ao realizar ataques com armas aplicáveis."
+		},
+		"Effects": {
+			"Sap": "Sap",
+			"SlowWeaponMastery": "Slow (Mastery de Arma)",
+			"Vex": "Vex"
+		},
+		"Notifications": {
+			"CleaveRequiresSuccess": "Cleave só pode ser usada após uma jogada de ataque bem-sucedida.",
+			"CleaveNoTargetsInRange": "Nenhum alvo válido ao alcance para Cleave.",
+			"NoTargets": "Nenhum alvo selecionado.",
+			"GrazeRequiresFailure": "Graze só pode ser usada após uma jogada de ataque fracassada.",
+			"GrazeRequiresPositiveModifier": "Graze requer um modificador de atributo positivo para causar dano.",
+			"PushRequiresSuccess": "Push só pode ser usada após uma jogada de ataque bem-sucedida.",
+			"PushSizeLimit": "Você só pode empurrar alvos Grandes ou menores.",
+			"PushNoSpace": "Não há para onde empurrar o alvo.",
+			"SapRequiresSuccess": "Sap só pode ser usada após uma jogada de ataque bem-sucedida.",
+			"SapAlreadyApplied": "O alvo já está sob efeito de Sap.",
+			"SlowRequiresSuccess": "Slow só pode ser usada após uma jogada de ataque bem-sucedida.",
+			"SlowAlreadyApplied": "O alvo já está sob efeito de Slow.",
+			"ToppleRequiresSuccess": "Topple só pode ser usada após uma jogada de ataque bem-sucedida.",
+			"ToppleAlreadyProne": "O alvo já está Caído.",
+			"VexRequiresSuccess": "Vex só pode ser usada após uma jogada de ataque bem-sucedida.",
+			"VexAlreadyApplied": "O alvo já está afetado pelo seu Vex."
+		}
+	}
+}

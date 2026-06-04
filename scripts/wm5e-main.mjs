@@ -52,6 +52,7 @@ function doPreRollAttack(args) {
 	const [config, dialog] = args;
 	if (config.wm5e) {
 		config.mastery = '';
+		config.wm5eNoMastery = true;
 		dialog.options.masteryOptions = [];
 	}
 }
@@ -60,6 +61,7 @@ async function doAutoMasteries() {
 	if (!isAutoMasteriesEnabled()) return;
 	prunePendingAutoMasteryContext();
 	const [rolls, activityContext, action] = arguments;
+	if (rolls?.some((roll) => roll.options?.wm5eNoMastery)) return;
 	const activity = getHookSubject(activityContext);
 	const midiActive = game.modules.get('midi-qol')?.active ?? false;
 	const rsrActive = game.modules.get('rsreforged')?.active ?? false;
@@ -607,7 +609,7 @@ async function doCleave({ message, shiftKey, el }) {
 		workflow.wm5e = true;
 		cleaveAttackRolls = await activity.rollAttack({ workflow });
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
-	} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true });
+	} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true, wm5eNoMastery: true });
 	if (cleaveAttackRolls?.[0]?.isSuccess) {
 		const config = {
 			attackMode: 'offhand',

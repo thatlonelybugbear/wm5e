@@ -39,6 +39,7 @@ Hooks.on('ready', () => {
 	WM_REFERENCES = CONFIG.DND5E.weaponMasteries;
 	if (LISTENERS_REGISTERED) return;
 	document.addEventListener('click', onActionsClick, { capture: true });
+	document.addEventListener('auxclick', onActionsClick, { capture: true });
 	document.addEventListener('contextmenu', onActionsClick, { capture: true, passive: false });
 	LISTENERS_REGISTERED = true;
 });
@@ -160,14 +161,19 @@ async function onActionsClick(event) {
 	}
 
 	if (el.classList?.contains('wm5e-mastery-reference')) {
+		if (event.type === 'contextmenu') {
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
 		if (event.type === 'click') {
 			event.preventDefault();
 			event.stopPropagation();
 			return toggleMasteryReference(el.dataset?.uuid, el.dataset?.hash ?? null);
 		}
-		if (event.type !== 'contextmenu') return;
+		if (event.type !== 'auxclick' || event.button !== 2) return;
 		event.preventDefault();
-		event.stopImmediatePropagation();
+		event.stopPropagation();
 		return closeMasteryReference(el.dataset?.uuid);
 	}
 
@@ -181,9 +187,15 @@ async function onActionsClick(event) {
 	if (!message?.isOwner || (!tooltip && !term)) return;
 
 	if (event.type === 'contextmenu') {
+		event.preventDefault();
+		event.stopPropagation();
+		return;
+	}
+
+	if (event.type === 'auxclick' && event.button === 2) {
 		// if the user right clicks, reinstate the original left click open Journal action
 		event.preventDefault();
-		event.stopImmediatePropagation();
+		event.stopPropagation();
 
 		const JournalEntry = await fromUuid(uuid);
 		const target = el.closest('a[data-link]') ?? el;

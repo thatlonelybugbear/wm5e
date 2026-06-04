@@ -62,12 +62,14 @@ async function doAutoMasteries() {
 	const [rolls, activityContext, action] = arguments;
 	const activity = getHookSubject(activityContext);
 	const midiActive = game.modules.get('midi-qol')?.active ?? false;
+	const rsrActive = game.modules.get('rsreforged')?.active ?? false;
 	const pendingContext = activity?.uuid ? PENDING_AUTO_MASTERY_CONTEXT.get(activity.uuid) : null;
+	logRsrMasteryDebug('start', { action, rolls, activity, midiActive, rsrActive, pendingContext });
 	let attackMessage;
 	let mastery;
 	let attackResult;
 
-	if (midiActive) {
+	if (midiActive || rsrActive) {
 		mastery = rolls?.[0]?.options?.mastery ?? pendingContext?.mastery ?? '';
 		attackResult = action === 'attack' ? summarizeAttackResult(rolls?.[0]) : pendingContext?.attackResult;
 		attackMessage = pendingContext?.messageId ? game.messages.get(pendingContext.messageId) : null;
@@ -87,21 +89,33 @@ async function doAutoMasteries() {
 		attackResult = summarizeAttackResult(attackMessage?.rolls?.[0]);
 	}
 
-	if (!attackMessage && !attackResult) return;
+	logRsrMasteryDebug('resolved', { action, mastery, attackMessage, attackResult, activity, midiActive, rsrActive, pendingContext });
 
-	if (!mastery) return;
+	if (!attackMessage && !attackResult) {
+		logRsrMasteryDebug('return-no-attack', { action, mastery, attackMessage, attackResult, activity, midiActive, rsrActive, pendingContext });
+		return;
+	}
+
+	if (!mastery) {
+		logRsrMasteryDebug('return-no-mastery', { action, mastery, attackMessage, attackResult, activity, midiActive, rsrActive, pendingContext });
+		return;
+	}
 	const { isCritical, isFailure, isFumble, isSuccess, isHit, isMiss } = attackResult ?? summarizeAttackResult(attackMessage?.rolls?.[0]);
 
 	const messageEl = attackMessage?.id ? document.querySelector(`[data-message-id="${attackMessage.id}"]`) : null;
 	const el = findMasteryAnchor(messageEl, mastery);
-	const parameters = { message: attackMessage, shiftKey: false, el };
 
 	const shouldTrigger = (action === 'attack' && isMiss && mastery === 'graze') || (action === 'damage' && isHit && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
+	logRsrMasteryDebug('decision', { action, mastery, attackMessage, messageEl, el, isHit, isMiss, shouldTrigger });
 	if (shouldTrigger) {
-		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.(parameters);
-		if (used) markUsed(el);
+		logRsrMasteryDebug('trigger', { action, mastery, attackMessage, messageEl, el, isHit, isMiss });
+		const target = game.modules.get('rsreforged')?.active ? await waitForRsrMasteryAnchor(attackMessage, mastery) : { message: attackMessage, el };
+		logRsrMasteryDebug('target', { mastery, attackMessage, targetMessage: target.message, el: target.el });
+		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: target.message, shiftKey: false, el: target.el });
+		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
+		if (used) markUsed(target.el);
 	}
-	if (midiActive && activity?.uuid && (action === 'damage' || shouldTrigger)) {
+	if ((midiActive || rsrActive) && activity?.uuid && (action === 'damage' || shouldTrigger)) {
 		PENDING_AUTO_MASTERY_CONTEXT.delete(activity.uuid);
 	}
 }
@@ -113,6 +127,65 @@ function getOriginatingAttackMessage(messageId) {
 
 function getHookSubject(context) {
 	return context?.subject ?? context ?? null;
+}
+
+function getRsrTargetMessage(message) {
+	const origin = message.getOriginatingMessage?.();
+	if (origin && origin !== message) return origin;
+	const associated = message.getAssociatedMessage?.();
+	if (associated && associated !== message) return associated;
+	return game.messages.get(message.flags?.dnd5e?.originatingMessage) ?? game.messages.get(message.system?.message) ?? message;
+}
+
+function logRsrMasteryDebug(step, data) {
+	const message = data.attackMessage ?? data.targetMessage;
+	console.log(`WM5E RSR ${step}: ${JSON.stringify({
+		action: data.action,
+		attempt: data.attempt,
+		mastery: data.mastery,
+		rsrActive: data.rsrActive ?? game.modules.get('rsreforged')?.active ?? false,
+		midiActive: data.midiActive,
+		shouldTrigger: data.shouldTrigger,
+		used: data.used,
+		isHit: data.isHit,
+		isMiss: data.isMiss,
+		attackResult: data.attackResult ? {
+			isCritical: data.attackResult.isCritical,
+			isFailure: data.attackResult.isFailure,
+			isFumble: data.attackResult.isFumble,
+			isSuccess: data.attackResult.isSuccess,
+			total: data.attackResult.total,
+		} : null,
+		rollCount: data.rolls?.length,
+		rollMastery: data.rolls?.[0]?.options?.mastery,
+		rollOriginatingMessage: data.rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage,
+		activityUuid: data.activity?.uuid,
+		pendingMessageId: data.pendingContext?.messageId,
+		pendingMastery: data.pendingContext?.mastery,
+		messageId: message?.id,
+		messageType: message?.flags?.dnd5e?.roll?.type,
+		messageMastery: message?.flags?.dnd5e?.roll?.mastery,
+		originatingMessage: message?.flags?.dnd5e?.originatingMessage,
+		systemMessage: message?.system?.message,
+		hasMessageEl: !!data.messageEl,
+		hasAnchor: !!data.el,
+		anchorText: data.el?.textContent?.trim(),
+		anchorUuid: data.el?.dataset?.uuid,
+		anchorRsrMastery: data.el?.closest('[data-rsr-generated-mastery]')?.dataset?.rsrGeneratedMastery,
+	})}`);
+}
+
+async function waitForRsrMasteryAnchor(message, mastery, attempts = 6, delayMs = 50) {
+	let targetMessage = message;
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		targetMessage = getRsrTargetMessage(message);
+		const messageEl = targetMessage?.id ? document.querySelector(`[data-message-id="${targetMessage.id}"]`) : null;
+		const el = findMasteryAnchor(messageEl, mastery);
+		logRsrMasteryDebug('wait', { mastery, targetMessage, messageEl, el, attempt });
+		if (el) return { message: targetMessage, el };
+		await new Promise((resolve) => setTimeout(resolve, delayMs));
+	}
+	return { message: targetMessage, el: null };
 }
 
 function summarizeAttackResult(roll) {
@@ -889,6 +962,10 @@ function findMasteryAnchor(root, masteryKey) {
 	if (reference) {
 		const byUuid = root.querySelector(`a[data-uuid="${reference}"]`);
 		if (byUuid) return byUuid;
+	}
+	if (game.modules.get('rsreforged')?.active) {
+		const rsrAnchor = root.querySelector(`[data-rsr-generated-mastery="${masteryKey}"] a`);
+		if (rsrAnchor) return rsrAnchor;
 	}
 	const label = toMasteryLabel(masteryKey);
 	if (!label) return null;

@@ -48,3 +48,48 @@ a.wm5e-mastery-link {
 a.wm5e-mastery-link[hidden] {
 	display: none;
 }
+
+.wm5e-links-menu-body {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.wm5e-links-group {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.wm5e-links-menu-label {
+	text-align: center;
+	font-size: var(--font-size-13);
+	font-style: italic;
+	opacity: 0.8;
+}
+
+.wm5e-links-row {
+	display: flex;
+	gap: 8px;
+}
+
+.wm5e-links-row-combined {
+	align-items: stretch;
+}
+
+.wm5e-links-menu-button {
+	align-items: center;
+	display: flex;
+	flex: 1 1 0;
+	gap: 6px;
+	justify-content: center;
+	min-width: 0;
+}
+
+.wm5e-links-menu-button span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

@@ -1,0 +1,44 @@
+<section class="wm5e-links-menu-body">
+	<div class="wm5e-links-group">
+		<div class="wm5e-links-menu-label">
+			{{localize "WM5E.LinksMenu.GitHubMessage"}}
+		</div>
+		<div class="wm5e-links-row wm5e-links-row-primary">
+			{{#each primaryLinks}}
+				<button type="button" class="wm5e-links-menu-button" data-action="openLink" data-url="{{url}}">
+					<i class="{{icon}}" inert></i>
+					<span>{{label}}</span>
+				</button>
+			{{/each}}
+		</div>
+	</div>
+
+	<div class="wm5e-links-row wm5e-links-row-combined">
+		<div class="wm5e-links-group">
+			<div class="wm5e-links-menu-label">
+				{{localize "WM5E.LinksMenu.DiscordMessage"}}
+			</div>
+			<div class="wm5e-links-row wm5e-links-row-secondary">
+				{{#each secondaryLinks}}
+					<button type="button" class="wm5e-links-menu-button" data-action="openLink" data-url="{{url}}">
+						<i class="{{icon}}" inert></i>
+						<span>{{label}}</span>
+					</button>
+				{{/each}}
+			</div>
+		</div>
+		<div class="wm5e-links-group">
+			<div class="wm5e-links-menu-label">
+				{{localize "WM5E.LinksMenu.SupportMessage"}}
+			</div>
+			<div class="wm5e-links-row wm5e-links-row-tertiary">
+				{{#each tertiaryLinks}}
+					<button type="button" class="wm5e-links-menu-button" data-action="openLink" data-url="{{url}}">
+						<i class="{{icon}}" inert></i>
+						<span>{{label}}</span>
+					</button>
+				{{/each}}
+			</div>
+		</div>
+	</div>
+</section>

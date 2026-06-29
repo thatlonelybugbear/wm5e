@@ -6,6 +6,8 @@
 	PUSH: 'wm5e.pushToken',
 };
 
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+
 let WM_REFERENCES;
 let LISTENERS_REGISTERED = false;
 const PENDING_AUTO_MASTERY_CONTEXT = new Map();
@@ -906,7 +908,63 @@ function getTargetDescriptors() {
 	return Array.from(targets.values());
 }
 
+class Wm5eLinksMenu extends HandlebarsApplicationMixin(ApplicationV2) {
+	static LINKS = [
+		{ label: 'README', icon: 'fa-brands fa-github', url: 'https://github.com/thatlonelybugbear/wm5e/blob/main/README.md' },
+		{ label: 'Issues', icon: 'fa-solid fa-circle-exclamation', url: 'https://github.com/thatlonelybugbear/wm5e/issues' },
+		{ label: 'Discord', icon: 'fa-brands fa-discord', url: 'https://discord.gg/twsvWuJJEN' },
+		{ label: 'Ko-Fi', icon: 'fa-solid fa-mug-hot', url: 'https://ko-fi.com/thatlonelybugbear' },
+		{ label: 'Patreon', icon: 'fa-brands fa-patreon', url: 'https://www.patreon.com/thatlonelybugbear' },
+	];
+
+	static DEFAULT_OPTIONS = {
+		id: 'wm5e-links-menu',
+		classes: ['wm5e-links-menu'],
+		window: {
+			title: 'WM5E.LinksMenu.Title',
+			icon: 'fa-solid fa-link',
+			resizable: false,
+		},
+		actions: {
+			openLink: Wm5eLinksMenu.#onOpenLink,
+		},
+		position: {
+			width: 420,
+			height: 'auto',
+		},
+	};
+
+	static PARTS = {
+		body: {
+			template: 'modules/wm5e/templates/apps/wm5e-links-menu.hbs',
+		},
+	};
+
+	async _prepareContext(options) {
+		const context = await super._prepareContext(options);
+		context.primaryLinks = this.constructor.LINKS.slice(0, 2);
+		context.secondaryLinks = this.constructor.LINKS.slice(2, 3);
+		context.tertiaryLinks = this.constructor.LINKS.slice(3);
+		return context;
+	}
+
+	static #onOpenLink(_event, target) {
+		const url = target?.dataset?.url;
+		if (!url) return;
+		globalThis.open(url, '_blank', 'noopener,noreferrer');
+	}
+}
+
 function registerSettings() {
+	game.settings.registerMenu(Constants.MODULE_ID, 'linksMenu', {
+		name: 'WM5E.LinksMenu.Name',
+		label: 'WM5E.LinksMenu.Label',
+		hint: 'WM5E.LinksMenu.Hint',
+		icon: 'fa-solid fa-link',
+		type: Wm5eLinksMenu,
+		restricted: false,
+	});
+
 	game.settings.register(Constants.MODULE_ID, 'autoMasteries', {
 		name: 'WM5E.AutoMasteries.Name',
 		hint: 'WM5E.AutoMasteries.Hint',

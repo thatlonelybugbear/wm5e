@@ -1,5 +1,14 @@
 ﻿{
 	"WM5E": {
+		"LinksMenu": {
+			"Name": "Module Support",
+			"Label": "Links",
+			"Hint": "Open WM5E documentation, issue tracker, and support links.",
+			"Title": "Resources & Support",
+			"GitHubMessage": "GitHub links",
+			"DiscordMessage": "Community",
+			"SupportMessage": "Toss a Coin to your Bugbear"
+		},
 		"AutoMasteries": {
 			"Name": "Automatically Trigger Masteries",
 			"Hint": "When enabled (each user must enable separately), relevant weapon masteries will be automatically triggered when making attacks with applicable weapons."

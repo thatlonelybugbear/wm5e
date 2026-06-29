@@ -1,8 +1,10 @@
 ## 14.533.2
 * Change right click handling to `auxclick` instead of `contextmenu` to avoid conflicts with Foundry's context menu handling.
 * Reworked RSReforged compatibility.
-* Added pt_BR translation by [Kharmans](https://github.com/Kharmans) 🤗
+  * Fixed automatic mastery triggering when RSReforged immediately resolves attack and damage rolls.
+* Added an automatic Push mastery distance prompt, limited to reachable one-grid-distance or two-grid-distance options.
 * Added access to the project's GitHub and Bugbear's Den discord and support links via a settings menu app.
+* Added pt_BR translation by [Kharmans](https://github.com/Kharmans) 🤗
 
 ## 14.533.1.1
 * `module.json` quick fix.

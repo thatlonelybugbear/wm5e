@@ -1,3 +1,9 @@
+## 14.533.2
+* Change right click handling to `auxclick` instead of `contextmenu` to avoid conflicts with Foundry's context menu handling.
+* Reworked RSReforged compatibility.
+* Added pt_BR translation by [Kharmans](https://github.com/Kharmans) 🤗
+* Added access to the project's GitHub and Bugbear's Den discord and support links via a settings menu app.
+
 ## 14.533.1.1
 * `module.json` quick fix.
 

@@ -59,7 +59,7 @@
 	],
 	"flags": {
 		"hotReload": {
-			"paths": ["lang/en.json"]
+			"paths": ["lang/en.json", "styles/styles.css"]
 		}
 	},
 	"bugs": "https://github.com/thatlonelybugbear/wm5e/issues",

@@ -93,3 +93,37 @@ a.wm5e-mastery-link[hidden] {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+.wm5e-push-dialog {
+	outline: 2px solid #fbbf24;
+	outline-offset: 0;
+	box-shadow: 0 0 16px rgba(251, 191, 36, 0.65);
+	animation: wm5e-push-breathe 2s ease-in-out infinite;
+}
+
+.wm5e-push-dialog-label {
+	text-align: center;
+}
+
+@keyframes wm5e-push-breathe {
+	0%, 100% {
+		outline-color: #fbbf24;
+		box-shadow: 0 0 14px rgba(251, 191, 36, 0.6);
+	}
+	12.5%, 87.5% {
+		outline-color: #f59e0b;
+		box-shadow: 0 0 16px rgba(245, 158, 11, 0.65);
+	}
+	25%, 75% {
+		outline-color: #d97706;
+		box-shadow: 0 0 18px rgba(217, 119, 6, 0.7);
+	}
+	37.5%, 62.5% {
+		outline-color: #b45309;
+		box-shadow: 0 0 20px rgba(180, 83, 9, 0.75);
+	}
+	50% {
+		outline-color: #92400e;
+		box-shadow: 0 0 22px rgba(146, 64, 14, 0.8);
+	}
+}

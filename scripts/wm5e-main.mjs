@@ -80,6 +80,14 @@ async function doAutoMasteries() {
 		mastery = rolls?.[0]?.options?.mastery ?? pendingContext?.mastery ?? '';
 		attackResult = action === 'attack' ? summarizeAttackResult(rolls?.[0]) : pendingContext?.attackResult;
 		attackMessage = pendingContext?.messageId ? game.messages.get(pendingContext.messageId) : null;
+		if (activity?.uuid && action === 'attack' && (mastery || attackResult)) {
+			PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, {
+				mastery,
+				messageId: attackMessage?.id ?? pendingContext?.messageId ?? null,
+				attackResult,
+				timestamp: Date.now(),
+			});
+		}
 		if (!attackMessage) attackMessage = await findRelevantMessageForActivity(activity);
 		if (activity?.uuid && (mastery || attackMessage?.id || attackResult)) {
 			PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, {
@@ -112,7 +120,7 @@ async function doAutoMasteries() {
 	const messageEl = attackMessage?.id ? document.querySelector(`[data-message-id="${attackMessage.id}"]`) : null;
 	const el = findMasteryAnchor(messageEl, mastery);
 
-	const shouldTrigger = (action === 'attack' && isMiss && mastery === 'graze') || (action === 'damage' && isHit && ['cleave', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
+	const shouldTrigger = (action === 'attack' && isMiss && mastery === 'graze') || (action === 'damage' && isHit && ['cleave', 'push', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
 	logRsrMasteryDebug('decision', { action, mastery, attackMessage, messageEl, el, isHit, isMiss, shouldTrigger });
 	if (shouldTrigger) {
 		logRsrMasteryDebug('trigger', { action, mastery, attackMessage, messageEl, el, isHit, isMiss });
@@ -160,6 +168,8 @@ function getRsrTargetMessage(message) {
 }
 
 function logRsrMasteryDebug(step, data) {
+	globalThis.wm5e ??= {};
+	if (!globalThis.wm5e.rsrDebug) return;
 	const message = data.attackMessage ?? data.targetMessage;
 	console.log(`WM5E RSR ${step}: ${JSON.stringify({
 		action: data.action,
@@ -533,6 +543,18 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target')
 	return canvas.tokens.get(select);
 }
 
+async function promptPushDistance(distances) {
+	const gridUnits = canvas.grid?.units || '';
+	const distance = await foundry.applications.api.DialogV2.wait({
+		window: { title: 'Mastery: Push' },
+		content: '<p class="wm5e-push-dialog-label">Choose Distance</p>',
+		modal: false,
+		classes: ['wm5e-push-dialog'],
+		buttons: distances.map((distance) => ({ label: `${distance} ${gridUnits}`.trim(), action: String(distance) })),
+	});
+	return Number(distance) || 0;
+}
+
 function createMessageConfig({ activity, target, type = 'damage', rolls, flavor }) {
 	const messageConfig = {};
 	messageConfig.speaker = ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() });
@@ -692,32 +714,35 @@ async function doPush({ message, shiftKey, el }) {
 		ui.notifications.warn(i18n('Notifications.PushSizeLimit'));
 		return false;
 	}
-	const maxDistance = 2 * gridUnitDistance();
 	const { angle } = new foundry.canvas.geometry.Ray(attackerToken, targetToken);
 	const direction = Math.normalizeDegrees(Math.toDegrees(angle));
-	let initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction, maxDistance);
-	let snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
-	let testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
-	if (testNewPosition.result.length === 1) {
-		initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction + 45, maxDistance);
-		snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
-		testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
-		if (testNewPosition.result.length === 1) {
-			initialNewPosition = canvas.grid.getTranslatedPoint(targetToken, direction - 45, maxDistance);
-			snappedinitialNewPosition = targetToken.getSnappedPosition(initialNewPosition);
-			testNewPosition = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snappedinitialNewPosition], {});
-			if (testNewPosition.result.length === 1) {
-				ui.notifications.warn(i18n('Notifications.PushNoSpace'));
-				return false;
-			}
-		}
+	const positions = new Map();
+	for (const distance of [1, 2].map((multiplier) => multiplier * (canvas.grid?.distance || 5))) {
+		const position = getPushPosition(targetToken, direction, (distance / (canvas.grid?.distance || 5)) * gridUnitDistance());
+		if (position) positions.set(distance, position);
 	}
-	const finalPosition = testNewPosition.result.at(-1);
+	if (!positions.size) {
+		ui.notifications.warn(i18n('Notifications.PushNoSpace'));
+		return false;
+	}
+	const pushDistance = await promptPushDistance([...positions.keys()]);
+	if (!pushDistance) return false;
+	const finalPosition = positions.get(pushDistance);
 	let pushed;
 	if (target.isOwner) pushed = await targetToken.document.update(finalPosition);
 	else pushed = await doQueries('push', { tokenUuid: targetToken.document.uuid, updates: finalPosition });
 	if (!pushed) return false;
 	return true;
+}
+
+function getPushPosition(targetToken, direction, maxDistance) {
+	for (const offset of [0, 45, -45]) {
+		const point = canvas.grid.getTranslatedPoint(targetToken, direction + offset, maxDistance);
+		const snapped = targetToken.getSnappedPosition(point);
+		const path = targetToken.findMovementPath([{ x: targetToken.x, y: targetToken.y }, snapped], {});
+		if (path.result.length > 1) return path.result.at(-1);
+	}
+	return null;
 }
 
 async function doSap({ message, shiftKey, el }) {

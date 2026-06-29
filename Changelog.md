@@ -4,6 +4,7 @@
   * Fixed automatic mastery triggering when RSReforged immediately resolves attack and damage rolls.
 * Added an automatic Push mastery distance prompt, limited to reachable one-grid-distance or two-grid-distance options.
 * Added access to the project's GitHub and Bugbear's Den discord and support links via a settings menu app.
+* Compatibility bump for Foundry v14.363 (and for anyone wanting to test on v6 by building the dnd5e project themselves)
 * Added pt_BR translation by [Kharmans](https://github.com/Kharmans) 🤗
 
 ## 14.533.1.1

@@ -10,6 +10,7 @@ let WM_REFERENCES;
 let LISTENERS_REGISTERED = false;
 const PENDING_AUTO_MASTERY_CONTEXT = new Map();
 const PENDING_AUTO_MASTERY_MAX_AGE_MS = 60000;
+const RSR_MASTERY_LINKS = new Map();
 
 const WM_ACTIONS = {
 	Cleave: async (data) => doCleave(data),
@@ -47,6 +48,8 @@ Hooks.on('renderItemSheet5e', (...args) => onRenderItemSheet(...args));
 Hooks.on('dnd5e.preRollAttack', (...args) => doPreRollAttack(args));
 Hooks.on('dnd5e.postRollAttack', (...args) => doAutoMasteries(...args, 'attack'));
 Hooks.on('dnd5e.rollDamage', (...args) => doAutoMasteries(...args, 'damage'));
+Hooks.on('rsreforged.preRenderChatMessageContent', (...args) => onRsrPreRenderChatMessageContent(...args));
+Hooks.on('rsreforged.renderRoll', (...args) => onRsrRenderRoll(...args));
 
 function doPreRollAttack(args) {
 	const [config, dialog] = args;
@@ -129,6 +132,21 @@ function getOriginatingAttackMessage(messageId) {
 
 function getHookSubject(context) {
 	return context?.subject ?? context ?? null;
+}
+
+function onRsrPreRenderChatMessageContent(message, html, type) {
+	if (type !== 'activity' && type !== 'attack') return;
+	const links = html.find('a.wm5e-mastery-reference').detach();
+	if (!links.length) return;
+	RSR_MASTERY_LINKS.set(getRsrTargetMessage(message)?.id ?? message.id, links);
+}
+
+function onRsrRenderRoll(message, html, rollType, sectionHtml) {
+	if (rollType !== 'attack') return;
+	const links = RSR_MASTERY_LINKS.get(message.id);
+	if (!links?.length) return;
+	sectionHtml.find('a.wm5e-mastery-reference').remove();
+	sectionHtml.append(links.clone(true));
 }
 
 function getRsrTargetMessage(message) {

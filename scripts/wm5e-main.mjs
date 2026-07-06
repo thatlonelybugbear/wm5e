@@ -36,7 +36,31 @@ function effectName(key) {
 Hooks.on('init', () => {
 	registerQueries();
 	registerSettings();
+	npcMasteries();
 });
+
+function npcMasteries() {
+	const WeaponData = game.dnd5e.dataModels.item.WeaponData;
+	const original = Object.getOwnPropertyDescriptor(WeaponData.prototype, 'masteryOptions');
+
+	Object.defineProperty(WeaponData.prototype, 'masteryOptions', {
+		configurable: true,
+		get() {
+			const options = original.get.call(this);
+			if (options) return options;
+
+			const actor = this.parent?.actor;
+			if (actor?.type !== 'npc' || !this.mastery || !isNpcMasteriesEnabled()) return null;
+
+			return [
+				{
+					value: this.mastery,
+					label: CONFIG.DND5E.weaponMasteries[this.mastery]?.label ?? this.mastery,
+				},
+			];
+		},
+	});
+}
 
 Hooks.on('ready', () => {
 	WM_REFERENCES = CONFIG.DND5E.weaponMasteries;
@@ -171,40 +195,45 @@ function logRsrMasteryDebug(step, data) {
 	globalThis.wm5e ??= {};
 	if (!globalThis.wm5e.rsrDebug) return;
 	const message = data.attackMessage ?? data.targetMessage;
-	console.log(`WM5E RSR ${step}: ${JSON.stringify({
-		action: data.action,
-		attempt: data.attempt,
-		mastery: data.mastery,
-		rsrActive: data.rsrActive ?? game.modules.get('rsreforged')?.active ?? false,
-		midiActive: data.midiActive,
-		shouldTrigger: data.shouldTrigger,
-		used: data.used,
-		isHit: data.isHit,
-		isMiss: data.isMiss,
-		attackResult: data.attackResult ? {
-			isCritical: data.attackResult.isCritical,
-			isFailure: data.attackResult.isFailure,
-			isFumble: data.attackResult.isFumble,
-			isSuccess: data.attackResult.isSuccess,
-			total: data.attackResult.total,
-		} : null,
-		rollCount: data.rolls?.length,
-		rollMastery: data.rolls?.[0]?.options?.mastery,
-		rollOriginatingMessage: data.rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage,
-		activityUuid: data.activity?.uuid,
-		pendingMessageId: data.pendingContext?.messageId,
-		pendingMastery: data.pendingContext?.mastery,
-		messageId: message?.id,
-		messageType: message?.flags?.dnd5e?.roll?.type,
-		messageMastery: message?.flags?.dnd5e?.roll?.mastery,
-		originatingMessage: message?.flags?.dnd5e?.originatingMessage,
-		systemMessage: message?.system?.message,
-		hasMessageEl: !!data.messageEl,
-		hasAnchor: !!data.el,
-		anchorText: data.el?.textContent?.trim(),
-		anchorUuid: data.el?.dataset?.uuid,
-		anchorRsrMastery: data.el?.closest('[data-rsr-generated-mastery]')?.dataset?.rsrGeneratedMastery,
-	})}`);
+	console.log(
+		`WM5E RSR ${step}: ${JSON.stringify({
+			action: data.action,
+			attempt: data.attempt,
+			mastery: data.mastery,
+			rsrActive: data.rsrActive ?? game.modules.get('rsreforged')?.active ?? false,
+			midiActive: data.midiActive,
+			shouldTrigger: data.shouldTrigger,
+			used: data.used,
+			isHit: data.isHit,
+			isMiss: data.isMiss,
+			attackResult:
+				data.attackResult ?
+					{
+						isCritical: data.attackResult.isCritical,
+						isFailure: data.attackResult.isFailure,
+						isFumble: data.attackResult.isFumble,
+						isSuccess: data.attackResult.isSuccess,
+						total: data.attackResult.total,
+					}
+				:	null,
+			rollCount: data.rolls?.length,
+			rollMastery: data.rolls?.[0]?.options?.mastery,
+			rollOriginatingMessage: data.rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage,
+			activityUuid: data.activity?.uuid,
+			pendingMessageId: data.pendingContext?.messageId,
+			pendingMastery: data.pendingContext?.mastery,
+			messageId: message?.id,
+			messageType: message?.flags?.dnd5e?.roll?.type,
+			messageMastery: message?.flags?.dnd5e?.roll?.mastery,
+			originatingMessage: message?.flags?.dnd5e?.originatingMessage,
+			systemMessage: message?.system?.message,
+			hasMessageEl: !!data.messageEl,
+			hasAnchor: !!data.el,
+			anchorText: data.el?.textContent?.trim(),
+			anchorUuid: data.el?.dataset?.uuid,
+			anchorRsrMastery: data.el?.closest('[data-rsr-generated-mastery]')?.dataset?.rsrGeneratedMastery,
+		})}`,
+	);
 }
 
 async function waitForRsrMasteryAnchor(message, mastery, attempts = 6, delayMs = 50) {
@@ -613,7 +642,7 @@ function getActionContext({ message, shiftKey, requireFailure, requireSuccess, w
 	if (!shiftKey && ((requireSuccess && isMiss) || (requireFailure && isHit))) {
 		ui.notifications.warn(i18n(warning));
 		return null;
-	};
+	}
 
 	return { ...data, attackRoll };
 }
@@ -691,7 +720,9 @@ async function doGraze({ message, shiftKey, el }) {
 				appearance: { colorset: damageType },
 			}
 		:	{};
-	await new CONFIG.Dice.DamageRoll(String(mod), attacker.getRollData(), options).toMessage(createMessageConfig({ activity, target: targetToken, flavor: `${activity.item.name} - Graze`, type: 'damage' }));
+	await new CONFIG.Dice.DamageRoll(String(mod), attacker.getRollData(), options).toMessage(
+		createMessageConfig({ activity, target: targetToken, flavor: `${activity.item.name} - Graze`, type: 'damage' }),
+	);
 	return true;
 }
 
@@ -997,10 +1028,22 @@ function registerSettings() {
 		config: true,
 		type: new foundry.data.fields.BooleanField({ initial: false }),
 	});
+
+	game.settings.register(Constants.MODULE_ID, 'npcMasteries', {
+		name: 'WM5E.NpcMasteries.Name',
+		hint: 'WM5E.NpcMasteries.Hint',
+		scope: 'world',
+		config: true,
+		type: new foundry.data.fields.BooleanField({ initial: false }),
+	});
 }
 
 function isAutoMasteriesEnabled() {
 	return game.settings.get(Constants.MODULE_ID, 'autoMasteries');
+}
+
+function isNpcMasteriesEnabled() {
+	return game.settings.get(Constants.MODULE_ID, 'npcMasteries');
 }
 
 // Resolve an active user who can respond to actor-targeted queries.

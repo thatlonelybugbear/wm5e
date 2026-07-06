@@ -150,7 +150,7 @@ async function doAutoMasteries() {
 		logRsrMasteryDebug('trigger', { action, mastery, attackMessage, messageEl, el, isHit, isMiss });
 		const target = game.modules.get('rsreforged')?.active ? await waitForRsrMasteryAnchor(attackMessage, mastery) : { message: attackMessage, el };
 		logRsrMasteryDebug('target', { mastery, attackMessage, targetMessage: target.message, el: target.el });
-		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: target.message, shiftKey: false, el: target.el });
+		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: target.message, shiftKey: false, el: target.el, automatic: true });
 		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
 		if (used) markUsed(target.el);
 	}
@@ -629,7 +629,7 @@ function getMessageData(message) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning }) {
+function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning, automatic }) {
 	const data = getMessageData(message);
 	if (!data) return null;
 
@@ -640,15 +640,15 @@ function getActionContext({ message, shiftKey, requireFailure, requireSuccess, w
 	const { isHit, isMiss } = summarizeAttackResult(attackRoll);
 
 	if (!shiftKey && ((requireSuccess && isMiss) || (requireFailure && isHit))) {
-		ui.notifications.warn(i18n(warning));
+		if (!automatic) ui.notifications.warn(i18n(warning));
 		return null;
 	}
 
 	return { ...data, attackRoll };
 }
 
-async function doCleave({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.CleaveRequiresSuccess' });
+async function doCleave({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.CleaveRequiresSuccess', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item, originatingMessage, isAuthor } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -657,7 +657,7 @@ async function doCleave({ message, shiftKey, el }) {
 
 	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
 	const inRangeTarget = ac5e.checkNearby(targetToken, 'all', gridUnitDistance());
-	const validTargets = inRangeAttacker.filter((t1) => inRangeTarget.some((t2) => t2.id === t1.id));
+	const validTargets = inRangeAttacker.filter((t1) => t1.id !== targetToken.id && inRangeTarget.some((t2) => t2.id === t1.id));
 
 	if (!validTargets.length) {
 		ui.notifications.warn(i18n('Notifications.CleaveNoTargetsInRange'));
@@ -678,13 +678,14 @@ async function doCleave({ message, shiftKey, el }) {
 		workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
 		workflow.targetDescriptors = getTargetDescriptors();
 		workflow.wm5e = true;
-		cleaveAttackRolls = await activity.rollAttack({ workflow });
+		cleaveAttackRolls = await activity.rollAttack({ workflow, wm5e: true, wm5eNoMastery: true });
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
 	} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true, wm5eNoMastery: true });
 	if (cleaveAttackRolls?.[0]?.isSuccess) {
 		const config = {
 			attackMode: 'offhand',
 			isCritical: cleaveAttackRolls[0].isCritical,
+			wm5eNoMastery: true,
 		};
 		if (midiActive) {
 			workflow.attackMode = 'offhand';
@@ -699,8 +700,8 @@ async function doCleave({ message, shiftKey, el }) {
 	return true;
 }
 
-async function doGraze({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireFailure: true, warning: 'Notifications.GrazeRequiresFailure' });
+async function doGraze({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireFailure: true, warning: 'Notifications.GrazeRequiresFailure', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, targetToken, activity, attackRoll } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -735,8 +736,8 @@ async function doNick({ message, shiftKey, el }) {
 	return true;
 }
 
-async function doPush({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess' });
+async function doPush({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, targetToken, target, activity } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -776,8 +777,8 @@ function getPushPosition(targetToken, direction, maxDistance) {
 	return null;
 }
 
-async function doSap({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SapRequiresSuccess' });
+async function doSap({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SapRequiresSuccess', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -811,8 +812,8 @@ async function doSap({ message, shiftKey, el }) {
 	return true;
 }
 
-async function doSlow({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SlowRequiresSuccess' });
+async function doSlow({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SlowRequiresSuccess', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -850,8 +851,8 @@ async function doSlow({ message, shiftKey, el }) {
 	return true;
 }
 
-async function doTopple({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.ToppleRequiresSuccess' });
+async function doTopple({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.ToppleRequiresSuccess', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -872,8 +873,8 @@ async function doTopple({ message, shiftKey, el }) {
 	return true;
 }
 
-async function doVex({ message, shiftKey, el }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.VexRequiresSuccess' });
+async function doVex({ message, shiftKey, el, automatic }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.VexRequiresSuccess', automatic });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;

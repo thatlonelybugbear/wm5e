@@ -1,3 +1,6 @@
+## 14.533.3.1
+* Prevent Cleave re-target loops and auto warning noise
+
 ## 14.533.3
 * Added a setting to enable NPC actors' weapon masteries automation (default disabled).
 

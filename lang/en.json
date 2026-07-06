@@ -13,6 +13,10 @@
 			"Name": "Automatically Trigger Masteries",
 			"Hint": "When enabled (each user must enable separately), relevant weapon masteries will be automatically triggered when making attacks with applicable weapons."
 		},
+		"NpcMasteries": {
+			"Name": "Enable NPC Masteries",
+			"Hint": "When enabled, NPC weapons with a configured mastery can use that mastery when making attacks."
+		},
 		"Effects": {
 			"Sap": "Sap",
 			"SlowWeaponMastery": "Slow (Weapon Mastery)",

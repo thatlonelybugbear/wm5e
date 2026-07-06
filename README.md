@@ -40,6 +40,15 @@ To open the Journal entries you can instead right click on the mastery link.
 
 SHIFT + left click on the weapon mastery will bypass rules like: "Needs a successful attack to use".
 
+## NPC masteries supported (v14.533.3+)
+You can now enable NPC masteries from the module settings, and then any item with a Mastery selected will be triggered for non player actors too.
+
+<img width="784" height="309" alt="image" src="https://github.com/user-attachments/assets/93273b59-c43a-4d53-9dc9-4e8f040090d2" />
+
+<img width="702" height="523" alt="image" src="https://github.com/user-attachments/assets/16d23d17-af8c-4b89-ba07-bdd1a2f095de" />
+
+
+
 ## I installed the module but nothing is happening!
 Your actor needs to have a Mastery on the weapon of choice. To make sure they are setup, toggle the edit mode in the actor's character sheet, locate the "Configure Weapons" and enable the Masteries you want!
 
@@ -49,7 +58,7 @@ Your actor needs to have a Mastery on the weapon of choice. To make sure they ar
 
 
 
-## Videos (better ones will follow)
+## Videos
 
 
 [wm5e.webm](https://github.com/user-attachments/assets/23430ceb-3061-491c-a736-44f6b99ce3cb)

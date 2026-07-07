@@ -1,3 +1,11 @@
+## 14.533.4
+* Fixed Cleave single-target preselection so it targets the token ID instead of passing a Token object.
+* Fixed a Midi-QOL Cleave damage error by ensuring the workflow has target descriptors during wm5e damage rolls.
+* Improved automatic mastery handling with Midi-QOL and Ready Set Roll by reusing the resolved attack result instead of re-checking a potentially different message roll.
+* Sap now refreshes an existing Sap effect on the target instead of warning when the same effect is already present.
+* Slow now refreshes its existing effect and updates its source item instead of warning when the effect is already present.
+* Vex now refreshes duplicate effects from the same attacker while preserving separate Vex effects from different attackers.
+
 ## 14.533.3.1
 * Prevent Cleave re-target loops and auto warning noise
 

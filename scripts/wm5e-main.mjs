@@ -2,6 +2,7 @@
 	MODULE_ID: 'wm5e',
 	MODULE_NAME: 'Weapon Masteries 5e',
 	GM_CREATE_EFFECTS: 'wm5e.createEffectsQuery',
+	UPDATE_EFFECT: 'wm5e.updateEffectQuery',
 	ROLL_SAVE: 'wm5e.rollSaveQuery',
 	PUSH: 'wm5e.pushToken',
 };
@@ -72,6 +73,7 @@ Hooks.on('ready', () => {
 });
 Hooks.on('renderItemSheet5e', (...args) => onRenderItemSheet(...args));
 Hooks.on('dnd5e.preRollAttack', (...args) => doPreRollAttack(args));
+Hooks.on('dnd5e.preRollDamage', (...args) => doPreRollDamage(args));
 Hooks.on('dnd5e.postRollAttack', (...args) => doAutoMasteries(...args, 'attack'));
 Hooks.on('dnd5e.rollDamage', (...args) => doAutoMasteries(...args, 'damage'));
 Hooks.on('rsreforged.preRenderChatMessageContent', (...args) => onRsrPreRenderChatMessageContent(...args));
@@ -82,7 +84,23 @@ function doPreRollAttack(args) {
 	if (config.wm5e) {
 		config.mastery = '';
 		config.wm5eNoMastery = true;
+		setNoMasteryRollOptions(config);
 		dialog.options.masteryOptions = [];
+	}
+}
+
+function doPreRollDamage(args) {
+	const [config] = args;
+	if (config.wm5eNoMastery) {
+		setNoMasteryRollOptions(config);
+		if (config.workflow && !Array.isArray(config.workflow.targetDescriptors)) config.workflow.targetDescriptors = [];
+	}
+}
+
+function setNoMasteryRollOptions(config) {
+	for (const roll of config.rolls ?? []) {
+		roll.options ??= {};
+		roll.options.wm5eNoMastery = true;
 	}
 }
 
@@ -92,6 +110,7 @@ async function doAutoMasteries() {
 	const [rolls, activityContext, action] = arguments;
 	if (rolls?.some((roll) => roll.options?.wm5eNoMastery)) return;
 	const activity = getHookSubject(activityContext);
+	const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
 	const midiActive = game.modules.get('midi-qol')?.active ?? false;
 	const rsrActive = game.modules.get('rsreforged')?.active ?? false;
 	const pendingContext = activity?.uuid ? PENDING_AUTO_MASTERY_CONTEXT.get(activity.uuid) : null;
@@ -103,7 +122,7 @@ async function doAutoMasteries() {
 	if (midiActive || rsrActive) {
 		mastery = rolls?.[0]?.options?.mastery ?? pendingContext?.mastery ?? '';
 		attackResult = action === 'attack' ? summarizeAttackResult(rolls?.[0]) : pendingContext?.attackResult;
-		attackMessage = pendingContext?.messageId ? game.messages.get(pendingContext.messageId) : null;
+		attackMessage = getOriginatingAttackMessage(originatingMessageId) ?? (pendingContext?.messageId ? game.messages.get(pendingContext.messageId) : null);
 		if (activity?.uuid && action === 'attack' && (mastery || attackResult)) {
 			PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, {
 				mastery,
@@ -122,7 +141,6 @@ async function doAutoMasteries() {
 			});
 		}
 	} else {
-		const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
 		attackMessage = getOriginatingAttackMessage(originatingMessageId);
 		mastery = attackMessage?.flags?.dnd5e?.roll?.mastery;
 		attackResult = summarizeAttackResult(attackMessage?.rolls?.[0]);
@@ -150,7 +168,7 @@ async function doAutoMasteries() {
 		logRsrMasteryDebug('trigger', { action, mastery, attackMessage, messageEl, el, isHit, isMiss });
 		const target = game.modules.get('rsreforged')?.active ? await waitForRsrMasteryAnchor(attackMessage, mastery) : { message: attackMessage, el };
 		logRsrMasteryDebug('target', { mastery, attackMessage, targetMessage: target.message, el: target.el });
-		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: target.message, shiftKey: false, el: target.el, automatic: true });
+		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: target.message, shiftKey: false, el: target.el, attackResult });
 		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
 		if (used) markUsed(target.el);
 	}
@@ -629,26 +647,31 @@ function getMessageData(message) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
-function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning, automatic }) {
+function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning, attackResult }) {
 	const data = getMessageData(message);
 	if (!data) return null;
 
 	const { attackRolls } = data;
 	const attackRoll = attackRolls?.[0];
-	if (!attackRoll) return null;
+	if (!attackRoll && !attackResult) return null;
 
-	const { isHit, isMiss } = summarizeAttackResult(attackRoll);
+	const { isHit, isMiss } = attackResult ?? summarizeAttackResult(attackRoll);
 
 	if (!shiftKey && ((requireSuccess && isMiss) || (requireFailure && isHit))) {
-		if (!automatic) ui.notifications.warn(i18n(warning));
+		ui.notifications.warn(i18n(warning));
 		return null;
 	}
 
 	return { ...data, attackRoll };
 }
 
-async function doCleave({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.CleaveRequiresSuccess', automatic });
+async function updateTargetEffect(target, effect, updates) {
+	if (target.isOwner) return effect.update(updates);
+	return doQueries('updateEffect', { effectUuid: effect.uuid, updates });
+}
+
+async function doCleave({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.CleaveRequiresSuccess', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item, originatingMessage, isAuthor } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -664,7 +687,7 @@ async function doCleave({ message, shiftKey, el, automatic }) {
 		return false;
 	}
 
-	if (validTargets.length === 1) setTargets(validTargets);
+	if (validTargets.length === 1) setTargets([validTargets[0].id]);
 	const cleaveTarget = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.');
 	if (!cleaveTarget) {
 		ui.notifications.info(i18n('Notifications.NoTargets'));
@@ -700,8 +723,8 @@ async function doCleave({ message, shiftKey, el, automatic }) {
 	return true;
 }
 
-async function doGraze({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireFailure: true, warning: 'Notifications.GrazeRequiresFailure', automatic });
+async function doGraze({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireFailure: true, warning: 'Notifications.GrazeRequiresFailure', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, targetToken, activity, attackRoll } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -736,8 +759,8 @@ async function doNick({ message, shiftKey, el }) {
 	return true;
 }
 
-async function doPush({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess', automatic });
+async function doPush({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, targetToken, target, activity } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -777,49 +800,58 @@ function getPushPosition(targetToken, direction, maxDistance) {
 	return null;
 }
 
-async function doSap({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SapRequiresSuccess', automatic });
+async function doSap({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SapRequiresSuccess', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (target.appliedEffects.some((ae) => ae.name === effectName('Sap') && ae.origin === item.uuid)) {
-		ui.notifications.warn(i18n('Notifications.SapAlreadyApplied'));
-		return false;
-	}
+	const start = {
+		combatant: attackerToken.combatant?.id ?? null,
+		combat: game.combat?.id ?? null,
+		initiative: attackerToken.combatant?.initiative ?? null,
+		round: game.combat?.round ?? null,
+		turn: attackerToken.combatant?.turnNumber ?? null,
+		time: game.time.worldTime,
+	};
+	const duration = { expiry: 'turnStart', value: attackerToken.combatant?.turnNumber > game.combat?.turn ? 0 : 1, units: 'turns' };
+	const existingEffect = target.appliedEffects.find((ae) => ae.name === effectName('Sap'));
+	if (existingEffect) return updateTargetEffect(target, existingEffect, { origin: item.uuid, duration, start });
 	const effectData = {
 		name: effectName('Sap'),
 		img: 'icons/skills/wounds/injury-face-impact-orange.webp',
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { expiry: 'turnStart', value: 1, units: 'turns' },
-		start: {
-			combatant: attackerToken.combatant?.id ?? null,
-			combat: game.combat?.id ?? null,
-			initiative: attackerToken.combatant?.initiative ?? null,
-			round: game.combat?.round ?? null,
-			turn: attackerToken.combatant?.turnNumber ?? null,
-			time: game.time.worldTime,
-		},
+		duration,
+		start,
 		changes: [{ key: 'flags.automated-conditions-5e.attack.disadvantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once;' }],
 		flags: {
 			wm5e: { source: 'Sap action' },
 		},
 	};
-	if (attackerToken.combatant?.turnNumber > game.combat?.turn) effectData.duration.value = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
 }
 
-async function doSlow({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SlowRequiresSuccess', automatic });
+async function doSlow({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.SlowRequiresSuccess', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (target.appliedEffects.some((ae) => ae.name === effectName('SlowWeaponMastery'))) {
-		ui.notifications.warn(i18n('Notifications.SlowAlreadyApplied'));
-		return false;
+	const start = {
+		combatant: attackerToken.combatant?.id ?? null,
+		combat: game.combat?.id ?? null,
+		initiative: attackerToken.combatant?.initiative ?? null,
+		round: game.combat?.round ?? null,
+		turn: attackerToken.combatant?.turnNumber ?? null,
+		time: game.time.worldTime,
+	};
+	const duration = { expiry: 'turnStart', value: attackerToken.combatant?.turnNumber > game.combat?.turn ? 0 : 1, units: 'turns' };
+	const existingEffect = target.appliedEffects.find((ae) => ae.name === effectName('SlowWeaponMastery'));
+	if (existingEffect) {
+		await updateTargetEffect(target, existingEffect, { origin: item.uuid, duration, start });
+		return true;
 	}
 	const movementTypes = Object.entries(target.system.attributes.movement).filter(([key, value]) => key !== 'hover' && value > 0);
 	let changes;
@@ -831,28 +863,20 @@ async function doSlow({ message, shiftKey, el, automatic }) {
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { expiry: 'turnEnd', value: 1, units: 'turns' },
-		start: {
-			combatant: attackerToken.combatant?.id ?? null,
-			combat: game.combat?.id ?? null,
-			initiative: attackerToken.combatant?.initiative ?? null,
-			round: game.combat?.round ?? null,
-			turn: attackerToken.combatant?.turnNumber ?? null,
-			time: game.time.worldTime,
-		},
+		duration,
+		start,
 		changes,
 		flags: {
 			wm5e: { source: 'Slow action' },
 		},
 	};
-	if (attackerToken.combatant?.turnNumber > game.combat?.turn) effectData.duration.value = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
 }
 
-async function doTopple({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.ToppleRequiresSuccess', automatic });
+async function doTopple({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.ToppleRequiresSuccess', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
@@ -873,36 +897,43 @@ async function doTopple({ message, shiftKey, el, automatic }) {
 	return true;
 }
 
-async function doVex({ message, shiftKey, el, automatic }) {
-	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.VexRequiresSuccess', automatic });
+function isMatchingVexEffect(effect, attacker, attackerToken) {
+	if (effect.name !== effectName('Vex')) return false;
+	if (effect.flags?.wm5e?.attackerTokenUuid === attackerToken.document.uuid) return true;
+	const originItem = fromUuidSync(effect.origin);
+	return originItem?.actor?.uuid === attacker.uuid;
+}
+
+async function doVex({ message, shiftKey, el, attackResult }) {
+	const context = getActionContext({ message, shiftKey, requireSuccess: true, warning: 'Notifications.VexRequiresSuccess', attackResult });
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (target.appliedEffects.some((ae) => ae.origin === item.uuid && ae.name === effectName('Vex'))) {
-		ui.notifications.warn(i18n('Notifications.VexAlreadyApplied'));
-		return false;
-	}
+	const start = {
+		combatant: attackerToken.combatant?.id ?? null,
+		combat: game.combat?.id ?? null,
+		initiative: attackerToken.combatant?.initiative ?? null,
+		round: game.combat?.round ?? null,
+		turn: attackerToken.combatant?.turnNumber ?? null,
+		time: game.time.worldTime,
+	};
+	const duration = { expiry: 'turnEnd', value: attackerToken.combatant?.turnNumber > game.combat?.turn ? 0 : 1, units: 'turns' };
+	const vexFlags = { source: 'Vex action', attackerUuid: attacker.uuid, attackerTokenUuid: attackerToken.document.uuid, itemUuid: item.uuid };
+	const existingEffect = target.appliedEffects.find((ae) => isMatchingVexEffect(ae, attacker, attackerToken));
+	if (existingEffect) return updateTargetEffect(target, existingEffect, { origin: item.uuid, duration, start, 'flags.wm5e': vexFlags });
 	const effectData = {
 		name: effectName('Vex'),
 		img: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
 		origin: item.uuid,
 		disabled: false,
 		transfer: false,
-		duration: { expiry: 'turnEnd', value: 1, units: 'turns' },
-		start: {
-			combatant: attackerToken.combatant?.id ?? null,
-			combat: game.combat?.id ?? null,
-			initiative: attackerToken.combatant?.initiative ?? null,
-			round: game.combat?.round ?? null,
-			turn: attackerToken.combatant?.turnNumber ?? null,
-			time: game.time.worldTime,
-		},
+		duration,
+		start,
 		changes: [{ key: 'flags.automated-conditions-5e.grants.attack.advantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once; effectOriginTokenId === tokenId && hasAttack' }],
 		flags: {
-			wm5e: { source: 'Vex action' },
+			wm5e: vexFlags,
 		},
 	};
-	if (attackerToken.combatant?.turnNumber > game.combat?.turn) effectData.duration.value = 0;
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData]);
 	else await doQueries('createEffects', { actorUuid: target.uuid, effects: [effectData] });
 	return true;
@@ -914,6 +945,8 @@ async function doQueries(type, data) {
 	try {
 		if (type === 'createEffects') {
 			return activeGM.query(Constants.GM_CREATE_EFFECTS, data);
+		} else if (type === 'updateEffect') {
+			return activeGM.query(Constants.UPDATE_EFFECT, data);
 		} else if (type === 'rollSave') {
 			const actor = await fromUuid(data.actorUuid);
 			const user = getPlayerForActor(actor);
@@ -934,6 +967,11 @@ async function createEffects({ actorUuid, effects, options } = {}) {
 	return actor?.createEmbeddedDocuments('ActiveEffect', effects, options);
 }
 
+async function updateEffect({ effectUuid, updates } = {}) {
+	const effect = await fromUuid(effectUuid);
+	return effect?.update(updates);
+}
+
 async function pushAction({ tokenUuid, updates }) {
 	const token = await fromUuid(tokenUuid);
 	return token?.update(updates);
@@ -948,6 +986,7 @@ async function rollSavingThrow({ actorUuid, ability, dc, flavor }) {
 function registerQueries() {
 	CONFIG.queries[Constants.MODULE_ID] = {};
 	CONFIG.queries[Constants.GM_CREATE_EFFECTS] = createEffects;
+	CONFIG.queries[Constants.UPDATE_EFFECT] = updateEffect;
 	CONFIG.queries[Constants.ROLL_SAVE] = rollSavingThrow;
 	CONFIG.queries[Constants.PUSH] = pushAction;
 }

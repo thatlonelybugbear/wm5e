@@ -110,6 +110,7 @@ async function doAutoMasteries() {
 	const [rolls, activityContext, action] = arguments;
 	if (rolls?.some((roll) => roll.options?.wm5eNoMastery)) return;
 	const activity = getHookSubject(activityContext);
+	const rollMessage = rolls?.[0]?.parent;
 	const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
 	const midiActive = game.modules.get('midi-qol')?.active ?? false;
 	const rsrActive = game.modules.get('rsreforged')?.active ?? false;
@@ -168,7 +169,8 @@ async function doAutoMasteries() {
 		logRsrMasteryDebug('trigger', { action, mastery, attackMessage, messageEl, el, isHit, isMiss });
 		const target = game.modules.get('rsreforged')?.active ? await waitForRsrMasteryAnchor(attackMessage, mastery) : { message: attackMessage, el };
 		logRsrMasteryDebug('target', { mastery, attackMessage, targetMessage: target.message, el: target.el });
-		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: target.message, shiftKey: false, el: target.el, attackResult });
+		const contextMessage = action === 'damage' && rollMessage?.flags?.dnd5e?.targets?.length ? rollMessage : target.message;
+		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: contextMessage, shiftKey: false, el: target.el, attackResult });
 		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
 		if (used) markUsed(target.el);
 	}
@@ -641,7 +643,9 @@ function getMessageData(message) {
 
 	const attackerToken = canvas.tokens.get(speaker.token);
 	const target = fromUuidSync(targets?.[0]?.uuid);
+	if (!(target instanceof Actor)) return;
 	const targetToken = target?.token?.object || canvas.tokens.get(ChatMessage.getSpeaker({ actor: target })?.token);
+	if (!(targetToken?.actor instanceof Actor)) return;
 	const activity = fromUuidSync(activityUuid);
 	const item = fromUuidSync(itemUuid);
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
@@ -699,7 +703,7 @@ async function doCleave({ message, shiftKey, el, attackResult }) {
 	const midiActive = game.modules.get('midi-qol')?.active;
 	if (midiActive) {
 		workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
-		workflow.targetDescriptors = getTargetDescriptors();
+		workflow.targetDescriptors = [getTargetDescriptor(cleaveTarget)].filter(Boolean);
 		workflow.wm5e = true;
 		cleaveAttackRolls = await activity.rollAttack({ workflow, wm5e: true, wm5eNoMastery: true });
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
@@ -991,17 +995,12 @@ function registerQueries() {
 	CONFIG.queries[Constants.PUSH] = pushAction;
 }
 
-function getTargetDescriptors() {
-	const targets = new Map();
-	for (const token of game.user.targets) {
-		const { name } = token;
-		const { img, system, uuid, statuses } = token.actor ?? {};
-		if (uuid) {
-			const ac = statuses.has('coverTotal') ? null : system.attributes?.ac?.value;
-			targets.set(uuid, { name, img, uuid, ac: ac ?? null });
-		}
-	}
-	return Array.from(targets.values());
+function getTargetDescriptor(token) {
+	const { name } = token;
+	const { img, system, uuid, statuses } = token.actor ?? {};
+	if (!uuid) return null;
+	const ac = statuses.has('coverTotal') ? null : system.attributes?.ac?.value;
+	return { name, img, uuid, ac: ac ?? null };
 }
 
 class Wm5eLinksMenu extends HandlebarsApplicationMixin(ApplicationV2) {

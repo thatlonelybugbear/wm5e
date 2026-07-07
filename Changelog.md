@@ -1,3 +1,6 @@
+## ## 14.533.4.1
+* Reworked MidiQOL compatibility.
+
 ## 14.533.4
 * Fixed Cleave single-target preselection so it targets the token ID instead of passing a Token object.
 * Fixed a Midi-QOL Cleave damage error by ensuring the workflow has target descriptors during wm5e damage rolls.

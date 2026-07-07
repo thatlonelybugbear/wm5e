@@ -76,6 +76,8 @@ Hooks.on('dnd5e.preRollAttack', (...args) => doPreRollAttack(args));
 Hooks.on('dnd5e.preRollDamage', (...args) => doPreRollDamage(args));
 Hooks.on('dnd5e.postRollAttack', (...args) => doAutoMasteries(...args, 'attack'));
 Hooks.on('dnd5e.rollDamage', (...args) => doAutoMasteries(...args, 'damage'));
+Hooks.on('midi-qol.AttackRollComplete', (...args) => doMidiAttackRollComplete(args));
+Hooks.on('midi-qol.preDamageRoll', (...args) => doMidiPreDamageRoll(args));
 Hooks.on('rsreforged.preRenderChatMessageContent', (...args) => onRsrPreRenderChatMessageContent(...args));
 Hooks.on('rsreforged.renderRoll', (...args) => onRsrRenderRoll(...args));
 
@@ -104,6 +106,67 @@ function setNoMasteryRollOptions(config) {
 	}
 }
 
+function doMidiPreDamageRoll(args) {
+	if (!isAutoMasteriesEnabled()) return;
+	const [workflow, activity] = args;
+	const targetToken = getWorkflowTarget(workflow);
+	if (!activity?.uuid || !(targetToken?.actor instanceof Actor)) return;
+	const mastery = workflow?.attackRoll?.options?.mastery ?? PENDING_AUTO_MASTERY_CONTEXT.get(activity.uuid)?.mastery ?? '';
+	const attackResult = summarizeAttackResult(workflow?.attackRoll);
+	if (!attackResult) return;
+	const context = {
+		mastery,
+		messageId: workflow?.itemCardId ?? workflow?.defaultItemCardUuid?.split('.').pop() ?? null,
+		attackResult,
+		targetActorUuid: targetToken.actor.uuid,
+		targetTokenUuid: targetToken.document.uuid,
+		timestamp: Date.now(),
+	};
+	workflow.automatedMasteries = {
+		targetActor: context.targetActorUuid,
+		targetToken: context.targetTokenUuid,
+		isHit: attackResult.isHit,
+		mastery,
+	};
+	PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, context);
+}
+
+async function doMidiAttackRollComplete(args) {
+	if (!isAutoMasteriesEnabled()) return;
+	prunePendingAutoMasteryContext();
+	const [workflow] = args;
+	if (workflow?.attackRoll?.options?.wm5eNoMastery) return;
+	const activity = workflow?.activity;
+	const targetToken = getWorkflowTarget(workflow);
+	if (!activity?.uuid || !(targetToken?.actor instanceof Actor)) return;
+	const mastery = workflow?.attackRoll?.options?.mastery ?? '';
+	if (!mastery) return;
+	const attackResult = summarizeAttackResult(workflow.attackRoll);
+	const attackMessage = workflow.chatCard ?? (workflow.itemCardId ? game.messages.get(workflow.itemCardId) : null) ?? (await findRelevantMessageForActivity(activity));
+	if (mastery === 'nick' && !isNickReminderEnabled()) return;
+	PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, {
+		mastery,
+		messageId: attackMessage?.id ?? null,
+		attackResult,
+		targetActorUuid: targetToken.actor.uuid,
+		targetTokenUuid: targetToken.document.uuid,
+		timestamp: Date.now(),
+	});
+	workflow.automatedMasteries = {
+		targetActor: targetToken.actor.uuid,
+		targetToken: targetToken.document.uuid,
+		isHit: attackResult.isHit,
+		mastery,
+	};
+	const shouldTrigger = (attackResult.isMiss && mastery === 'graze') || mastery === 'nick' || (attackResult.isHit && ['push', 'sap', 'topple'].includes(mastery));
+	if (!shouldTrigger) return;
+	const messageEl = attackMessage?.id ? document.querySelector(`[data-message-id="${attackMessage.id}"]`) : null;
+	const el = findMasteryAnchor(messageEl, mastery);
+	const contextMessage = getMessageWithTarget(attackMessage, targetToken);
+	const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: contextMessage, shiftKey: false, el, attackResult });
+	if (used) markUsed(el);
+}
+
 async function doAutoMasteries() {
 	if (!isAutoMasteriesEnabled()) return;
 	prunePendingAutoMasteryContext();
@@ -114,13 +177,14 @@ async function doAutoMasteries() {
 	const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
 	const midiActive = game.modules.get('midi-qol')?.active ?? false;
 	const rsrActive = game.modules.get('rsreforged')?.active ?? false;
+	if (midiActive && action === 'attack') return;
 	const pendingContext = activity?.uuid ? PENDING_AUTO_MASTERY_CONTEXT.get(activity.uuid) : null;
 	logRsrMasteryDebug('start', { action, rolls, activity, midiActive, rsrActive, pendingContext });
 	let attackMessage;
 	let mastery;
 	let attackResult;
 
-	if (midiActive || rsrActive) {
+	if (rsrActive || (midiActive && action === 'damage')) {
 		mastery = rolls?.[0]?.options?.mastery ?? pendingContext?.mastery ?? '';
 		attackResult = action === 'attack' ? summarizeAttackResult(rolls?.[0]) : pendingContext?.attackResult;
 		attackMessage = getOriginatingAttackMessage(originatingMessageId) ?? (pendingContext?.messageId ? game.messages.get(pendingContext.messageId) : null);
@@ -129,6 +193,8 @@ async function doAutoMasteries() {
 				mastery,
 				messageId: attackMessage?.id ?? pendingContext?.messageId ?? null,
 				attackResult,
+				targetActorUuid: pendingContext?.targetActorUuid ?? null,
+				targetTokenUuid: pendingContext?.targetTokenUuid ?? null,
 				timestamp: Date.now(),
 			});
 		}
@@ -138,11 +204,13 @@ async function doAutoMasteries() {
 				mastery: mastery || pendingContext?.mastery || '',
 				messageId: attackMessage?.id ?? pendingContext?.messageId ?? null,
 				attackResult: attackResult ?? pendingContext?.attackResult ?? null,
+				targetActorUuid: pendingContext?.targetActorUuid ?? null,
+				targetTokenUuid: pendingContext?.targetTokenUuid ?? null,
 				timestamp: Date.now(),
 			});
 		}
 	} else {
-		attackMessage = getOriginatingAttackMessage(originatingMessageId);
+		attackMessage = action === 'attack' && rollMessage?.flags?.dnd5e?.roll?.type === 'attack' ? rollMessage : getOriginatingAttackMessage(originatingMessageId);
 		mastery = attackMessage?.flags?.dnd5e?.roll?.mastery;
 		attackResult = summarizeAttackResult(attackMessage?.rolls?.[0]);
 	}
@@ -163,13 +231,18 @@ async function doAutoMasteries() {
 	const messageEl = attackMessage?.id ? document.querySelector(`[data-message-id="${attackMessage.id}"]`) : null;
 	const el = findMasteryAnchor(messageEl, mastery);
 
-	const shouldTrigger = (action === 'attack' && isMiss && mastery === 'graze') || (action === 'damage' && isHit && ['cleave', 'push', 'sap', 'slow', 'topple', 'vex', 'nick'].includes(mastery));
+	const hitAttackMasteries = ['push', 'sap', 'topple'];
+	const damageMasteries = ['cleave', 'slow', 'vex'];
+	const shouldTrigger =
+		(action === 'attack' && ((isMiss && mastery === 'graze') || (!midiActive && mastery === 'nick' && isNickReminderEnabled()) || (isHit && !midiActive && hitAttackMasteries.includes(mastery)))) ||
+		(action === 'damage' && isHit && damageMasteries.includes(mastery));
 	logRsrMasteryDebug('decision', { action, mastery, attackMessage, messageEl, el, isHit, isMiss, shouldTrigger });
 	if (shouldTrigger) {
 		logRsrMasteryDebug('trigger', { action, mastery, attackMessage, messageEl, el, isHit, isMiss });
 		const target = game.modules.get('rsreforged')?.active ? await waitForRsrMasteryAnchor(attackMessage, mastery) : { message: attackMessage, el };
 		logRsrMasteryDebug('target', { mastery, attackMessage, targetMessage: target.message, el: target.el });
-		const contextMessage = action === 'damage' && rollMessage?.flags?.dnd5e?.targets?.length ? rollMessage : target.message;
+		const contextToken = action === 'damage' && midiActive ? getTokenFromUuid(pendingContext?.targetTokenUuid) : null;
+		const contextMessage = contextToken ? getMessageWithTarget(target.message, contextToken) : action === 'damage' && rollMessage?.flags?.dnd5e?.targets?.length ? rollMessage : target.message;
 		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: contextMessage, shiftKey: false, el: target.el, attackResult });
 		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
 		if (used) markUsed(target.el);
@@ -651,6 +724,26 @@ function getMessageData(message) {
 	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
 }
 
+function getWorkflowTarget(workflow) {
+	for (const targets of [workflow?.hitTargets, workflow?.hitTargetsEC, workflow?.targets]) {
+		if (targets?.size) return Array.from(targets)[0];
+	}
+	return null;
+}
+
+function getTokenFromUuid(uuid) {
+	const documentRef = uuid ? fromUuidSync(uuid) : null;
+	if (documentRef instanceof TokenDocument) return documentRef.object;
+	return null;
+}
+
+function getMessageWithTarget(message, token) {
+	const descriptor = getTargetDescriptor(token);
+	if (!message || !descriptor) return message;
+	const flags = foundry.utils.mergeObject(foundry.utils.duplicate(message.flags ?? {}), { dnd5e: { targets: [descriptor] } }, { inplace: false });
+	return Object.assign(Object.create(message), { flags });
+}
+
 function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning, attackResult }) {
 	const data = getMessageData(message);
 	if (!data) return null;
@@ -1068,6 +1161,14 @@ function registerSettings() {
 		type: new foundry.data.fields.BooleanField({ initial: false }),
 	});
 
+	game.settings.register(Constants.MODULE_ID, 'nickReminder', {
+		name: 'WM5E.NickReminder.Name',
+		hint: 'WM5E.NickReminder.Hint',
+		scope: 'user',
+		config: true,
+		type: new foundry.data.fields.BooleanField({ initial: true }),
+	});
+
 	game.settings.register(Constants.MODULE_ID, 'npcMasteries', {
 		name: 'WM5E.NpcMasteries.Name',
 		hint: 'WM5E.NpcMasteries.Hint',
@@ -1079,6 +1180,10 @@ function registerSettings() {
 
 function isAutoMasteriesEnabled() {
 	return game.settings.get(Constants.MODULE_ID, 'autoMasteries');
+}
+
+function isNickReminderEnabled() {
+	return game.settings.get(Constants.MODULE_ID, 'nickReminder');
 }
 
 function isNpcMasteriesEnabled() {

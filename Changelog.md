@@ -1,4 +1,7 @@
-## ## 14.533.4.1
+## 14.533.5
+* Added MidiQOL specific hooks to ensure that masteries are properly triggered.
+
+## 14.533.4.1
 * Reworked MidiQOL compatibility.
 
 ## 14.533.4

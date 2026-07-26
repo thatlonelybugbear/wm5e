@@ -47,6 +47,24 @@ You can now enable NPC masteries from the module settings, and then any item wit
 
 <img width="702" height="523" alt="image" src="https://github.com/user-attachments/assets/16d23d17-af8c-4b89-ba07-bdd1a2f095de" />
 
+## Custom weapon mastery options (v14.533.6+)
+WM5E can help dnd5e recognize custom weapon base item keys for weapon mastery choices.
+
+Open **Module Settings > Automated Masteries 5e > Custom Weapon IDs**, choose a short custom key like `psychicBlade`, then drag a compendium Item into the UUID field or paste its UUID.
+
+For the actual custom weapon:
+* Set the weapon's **Base Item** to the same custom key.
+* Set the weapon's **Mastery** to the mastery it should use.
+* Grant the actor knowledge of that custom key either via the normal actor sheet method or with an Active Effect change:
+
+```text
+key: system.traits.weaponProf.mastery.value
+mode: add
+value: psychicBlade
+```
+
+Weapons using that same base item key and a configured mastery can then appear in dnd5e weapon mastery choices.
+
 
 
 ## I installed the module but nothing is happening!

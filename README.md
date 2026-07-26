@@ -65,6 +65,8 @@ value: psychicBlade
 
 Weapons using that same base item key and a configured mastery can then appear in dnd5e weapon mastery choices.
 
+<img width="1095" height="774" alt="image" src="https://github.com/user-attachments/assets/ca080917-eed7-42d6-ac2f-25781c246f09" />
+
 
 
 ## I installed the module but nothing is happening!

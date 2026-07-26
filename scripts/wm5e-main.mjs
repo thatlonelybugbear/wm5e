@@ -14,6 +14,7 @@ let LISTENERS_REGISTERED = false;
 const PENDING_AUTO_MASTERY_CONTEXT = new Map();
 const PENDING_AUTO_MASTERY_MAX_AGE_MS = 60000;
 const RSR_MASTERY_LINKS = new Map();
+const REGISTERED_WEAPON_IDS = new Set();
 
 const WM_ACTIONS = {
 	Cleave: async (data) => doCleave(data),
@@ -65,6 +66,7 @@ function npcMasteries() {
 
 Hooks.on('ready', () => {
 	WM_REFERENCES = CONFIG.DND5E.weaponMasteries;
+	applyCustomWeaponIds();
 	if (LISTENERS_REGISTERED) return;
 	document.addEventListener('click', onActionsClick, { capture: true });
 	document.addEventListener('auxclick', onActionsClick, { capture: true });
@@ -242,7 +244,10 @@ async function doAutoMasteries() {
 		const target = game.modules.get('rsreforged')?.active ? await waitForRsrMasteryAnchor(attackMessage, mastery) : { message: attackMessage, el };
 		logRsrMasteryDebug('target', { mastery, attackMessage, targetMessage: target.message, el: target.el });
 		const contextToken = action === 'damage' && midiActive ? getTokenFromUuid(pendingContext?.targetTokenUuid) : null;
-		const contextMessage = contextToken ? getMessageWithTarget(target.message, contextToken) : action === 'damage' && rollMessage?.flags?.dnd5e?.targets?.length ? rollMessage : target.message;
+		const contextMessage =
+			contextToken ? getMessageWithTarget(target.message, contextToken)
+			: action === 'damage' && rollMessage?.flags?.dnd5e?.targets?.length ? rollMessage
+			: target.message;
 		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: contextMessage, shiftKey: false, el: target.el, attackResult });
 		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
 		if (used) markUsed(target.el);
@@ -1143,6 +1148,105 @@ class Wm5eLinksMenu extends HandlebarsApplicationMixin(ApplicationV2) {
 	}
 }
 
+class Wm5eWeaponIdsMenu extends HandlebarsApplicationMixin(ApplicationV2) {
+	static DEFAULT_OPTIONS = {
+		id: 'wm5e-weapon-ids-menu',
+		classes: ['wm5e-weapon-ids-menu'],
+		window: {
+			title: 'WM5E.WeaponIdsMenu.Title',
+			icon: 'fa-solid fa-swords',
+			resizable: true,
+		},
+		actions: {
+			add: Wm5eWeaponIdsMenu.#onAdd,
+			remove: Wm5eWeaponIdsMenu.#onRemove,
+		},
+		position: {
+			width: 640,
+			height: 'auto',
+		},
+	};
+
+	static PARTS = {
+		body: {
+			template: 'modules/wm5e/templates/apps/wm5e-weapon-ids-menu.hbs',
+		},
+	};
+
+	async _prepareContext(options) {
+		const context = await super._prepareContext(options);
+		const weaponIds = game.settings.get(Constants.MODULE_ID, 'weaponIds') ?? {};
+		context.weaponIds = Object.entries(weaponIds).map(([baseItem, uuid]) => ({ baseItem, uuid }));
+		return context;
+	}
+
+	_onRender(context, options) {
+		super._onRender(context, options);
+		this.element.addEventListener('dragover', Wm5eWeaponIdsMenu.#onDragOver);
+		this.element.addEventListener('drop', Wm5eWeaponIdsMenu.#onDrop);
+		this.element.addEventListener('change', Wm5eWeaponIdsMenu.#onChange);
+	}
+
+	static #onAdd(event) {
+		const rows = event.target.closest('.wm5e-weapon-ids-menu')?.querySelector('.wm5e-weapon-ids-rows');
+		if (!rows) return;
+		Wm5eWeaponIdsMenu.#addRow(rows);
+		Wm5eWeaponIdsMenu.#save(event.target.closest('.wm5e-weapon-ids-menu'));
+	}
+
+	static #addRow(rows) {
+		const row = document.createElement('div');
+		row.className = 'wm5e-weapon-ids-row';
+		row.innerHTML = `
+			<input type="text" name="baseItem" placeholder="${game.i18n.localize('WM5E.WeaponIdsMenu.BaseItemPlaceholder')}" />
+			<input type="text" name="uuid" placeholder="${game.i18n.localize('WM5E.WeaponIdsMenu.UuidPlaceholder')}" />
+			<button type="button" data-action="remove"><i class="fa-solid fa-trash" inert></i></button>
+		`;
+		rows.append(row);
+		return row;
+	}
+
+	static #onRemove(event, target) {
+		target.closest('.wm5e-weapon-ids-row')?.remove();
+		Wm5eWeaponIdsMenu.#save(event.target.closest('.wm5e-weapon-ids-menu'));
+	}
+
+	static #onChange(event) {
+		Wm5eWeaponIdsMenu.#save(event.target.closest('.wm5e-weapon-ids-menu'));
+	}
+
+	static async #save(app) {
+		const weaponIds = {};
+		for (const row of app?.querySelectorAll('.wm5e-weapon-ids-row') ?? []) {
+			const baseItem = row.querySelector('[name="baseItem"]')?.value?.trim();
+			const uuid = row.querySelector('[name="uuid"]')?.value?.trim();
+			if (baseItem && uuid) weaponIds[baseItem] = uuid;
+		}
+		await game.settings.set(Constants.MODULE_ID, 'weaponIds', weaponIds);
+	}
+
+	static #onDragOver(event) {
+		if (!event.target.closest('.wm5e-weapon-ids-menu')) return;
+		event.preventDefault();
+	}
+
+	static async #onDrop(event) {
+		const app = event.target.closest('.wm5e-weapon-ids-menu');
+		if (!app) return;
+		const data = TextEditor.getDragEventData(event);
+		if (!data?.uuid) return;
+		event.preventDefault();
+
+		let row = event.target.closest('.wm5e-weapon-ids-row');
+		if (!row) row = Wm5eWeaponIdsMenu.#addRow(app.querySelector('.wm5e-weapon-ids-rows'));
+		row.querySelector('[name="uuid"]').value = data.uuid;
+
+		const item = await fromUuid(data.uuid);
+		if (item?.type === 'weapon' && item.system?.type?.baseItem) row.querySelector('[name="baseItem"]').value ||= item.system.type.baseItem;
+		Wm5eWeaponIdsMenu.#save(app);
+	}
+}
+
 function registerSettings() {
 	game.settings.registerMenu(Constants.MODULE_ID, 'linksMenu', {
 		name: 'WM5E.LinksMenu.Name',
@@ -1151,6 +1255,22 @@ function registerSettings() {
 		icon: 'fa-solid fa-link',
 		type: Wm5eLinksMenu,
 		restricted: false,
+	});
+
+	game.settings.registerMenu(Constants.MODULE_ID, 'weaponIdsMenu', {
+		name: 'WM5E.WeaponIdsMenu.Name',
+		label: 'WM5E.WeaponIdsMenu.Label',
+		hint: 'WM5E.WeaponIdsMenu.Hint',
+		icon: 'fa-solid fa-swords',
+		type: Wm5eWeaponIdsMenu,
+		restricted: true,
+	});
+
+	game.settings.register(Constants.MODULE_ID, 'weaponIds', {
+		scope: 'world',
+		config: false,
+		type: new foundry.data.fields.ObjectField({ initial: {} }),
+		onChange: () => applyCustomWeaponIds(),
 	});
 
 	game.settings.register(Constants.MODULE_ID, 'autoMasteries', {
@@ -1188,6 +1308,18 @@ function isNickReminderEnabled() {
 
 function isNpcMasteriesEnabled() {
 	return game.settings.get(Constants.MODULE_ID, 'npcMasteries');
+}
+
+function applyCustomWeaponIds() {
+	for (const baseItem of REGISTERED_WEAPON_IDS) delete CONFIG.DND5E.weaponIds[baseItem];
+	REGISTERED_WEAPON_IDS.clear();
+
+	const weaponIds = game.settings.get(Constants.MODULE_ID, 'weaponIds') ?? {};
+	for (const [baseItem, uuid] of Object.entries(weaponIds)) {
+		if (!baseItem || !uuid) continue;
+		CONFIG.DND5E.weaponIds[baseItem] = uuid;
+		REGISTERED_WEAPON_IDS.add(baseItem);
+	}
 }
 
 // Resolve an active user who can respond to actor-targeted queries.

@@ -9,6 +9,18 @@
 			"DiscordMessage": "Community",
 			"SupportMessage": "Toss a Coin to your Bugbear"
 		},
+		"WeaponIdsMenu": {
+			"Name": "Custom Weapon IDs",
+			"Label": "Configure",
+			"Hint": "Map arbitrary base item keys to Item UUIDs for the dnd5e weapon mastery picker.",
+			"Title": "Custom Weapon IDs",
+			"BaseItem": "Base Item",
+			"BaseItemPlaceholder": "eg: psychicBlade",
+			"Uuid": "Item UUID",
+			"UuidPlaceholder": "Drag a compendium Item or paste its UUID",
+			"HintText": "Choose a short custom key, then link it to a compendium Item by dragging the Item here or pasting its UUID. Weapons using that same key as their base item and a configured mastery can then appear in dnd5e weapon mastery choices.",
+			"Add": "Add"
+		},
 		"AutoMasteries": {
 			"Name": "Automatically Trigger Masteries",
 			"Hint": "When enabled (each user must enable separately), relevant weapon masteries will be automatically triggered when making attacks with applicable weapons."

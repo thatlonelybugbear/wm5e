@@ -94,6 +94,37 @@ a.wm5e-mastery-link[hidden] {
 	white-space: nowrap;
 }
 
+.wm5e-weapon-ids-body {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.wm5e-weapon-ids-header,
+.wm5e-weapon-ids-row {
+	display: grid;
+	grid-template-columns: 1fr 2fr 32px;
+	gap: 8px;
+	align-items: center;
+}
+
+.wm5e-weapon-ids-header {
+	padding-right: 40px;
+	font-weight: 600;
+}
+
+.wm5e-weapon-ids-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.wm5e-weapon-ids-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
 .wm5e-push-dialog {
 	outline: 2px solid #fbbf24;
 	outline-offset: 0;

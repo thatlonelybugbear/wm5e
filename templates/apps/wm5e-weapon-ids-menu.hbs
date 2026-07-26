@@ -1,0 +1,19 @@
+<section class="wm5e-weapon-ids-body">
+	<p class="notes">{{localize "WM5E.WeaponIdsMenu.HintText"}}</p>
+	<div class="wm5e-weapon-ids-header">
+		<label>{{localize "WM5E.WeaponIdsMenu.BaseItem"}}</label>
+		<label>{{localize "WM5E.WeaponIdsMenu.Uuid"}}</label>
+	</div>
+	<div class="wm5e-weapon-ids-rows">
+		{{#each weaponIds}}
+			<div class="wm5e-weapon-ids-row">
+				<input type="text" name="baseItem" value="{{baseItem}}" placeholder="{{localize "WM5E.WeaponIdsMenu.BaseItemPlaceholder"}}" />
+				<input type="text" name="uuid" value="{{uuid}}" placeholder="{{localize "WM5E.WeaponIdsMenu.UuidPlaceholder"}}" />
+				<button type="button" data-action="remove"><i class="fa-solid fa-trash" inert></i></button>
+			</div>
+		{{/each}}
+	</div>
+	<div class="wm5e-weapon-ids-actions">
+		<button type="button" data-action="add"><i class="fa-solid fa-plus" inert></i> {{localize "WM5E.WeaponIdsMenu.Add"}}</button>
+	</div>
+</section>

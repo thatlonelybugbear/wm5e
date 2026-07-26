@@ -1,3 +1,7 @@
+## 14.533.6
+* Added a Custom Weapon IDs settings app for mapping custom weapon base item keys to compendium items for dnd5e weapon mastery choices.
+  * To add a custom mastery option, choose a short base item key, map it to a compendium Item UUID in the new setting, set the weapon's `Base Item` to that same key, set the weapon's `Mastery`, and grant the actor mastery knowledge with an Active Effect change like `system.traits.weaponProf.mastery.value | add | yourKey`.
+
 ## 14.533.5
 * Added MidiQOL specific hooks to ensure that masteries are properly triggered.
 

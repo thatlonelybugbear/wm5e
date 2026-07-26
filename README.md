@@ -1,5 +1,5 @@
 # Automated Masteries 5e
-![Latest Version](https://img.shields.io/badge/dynamic/json.svg?url=https://api.github.com/repos/thatlonelybugbear/wm5e/releases/latest&label=Module%20Version&query=$.tag_name&colorB=yellow&style=for-the-badge)
+![Latest Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgithub.com%2Fthatlonelybugbear%2Fwm5e%2Freleases%2Flatest%2Fdownload%2Fmodule.json&query=%24.version&label=AC5E%20Version&style=for-the-badge&color=yellow)
 ![Foundry Core Compatible Version](https://img.shields.io/badge/dynamic/json.svg?url=https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/module.json&label=Foundry%20Version&query=$.compatibility.verified&colorB=ff6400&style=for-the-badge)
 ![Dnd5e System Compatible Version](https://img.shields.io/badge/dynamic/json.svg?url=https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/module.json&label=dnd5e%20Version&query=$.relationships.systems[0].compatibility.verified&colorB=red&style=for-the-badge)
 

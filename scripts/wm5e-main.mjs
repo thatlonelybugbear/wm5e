@@ -176,7 +176,7 @@ async function doAutoMasteries() {
 	if (rolls?.some((roll) => roll.options?.wm5eNoMastery)) return;
 	const activity = getHookSubject(activityContext);
 	const rollMessage = rolls?.[0]?.parent;
-	const originatingMessageId = rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage;
+	const originatingMessageId = rollMessage?.getOriginatingMessage?.()?.id;
 	const midiActive = game.modules.get('midi-qol')?.active ?? false;
 	const rsrActive = game.modules.get('rsreforged')?.active ?? false;
 	if (midiActive && action === 'attack') return;
@@ -201,6 +201,7 @@ async function doAutoMasteries() {
 			});
 		}
 		if (!attackMessage) attackMessage = await findRelevantMessageForActivity(activity);
+		mastery = attackMessage?.system?.mastery ?? mastery;
 		if (activity?.uuid && (mastery || attackMessage?.id || attackResult)) {
 			PENDING_AUTO_MASTERY_CONTEXT.set(activity.uuid, {
 				mastery: mastery || pendingContext?.mastery || '',
@@ -212,8 +213,8 @@ async function doAutoMasteries() {
 			});
 		}
 	} else {
-		attackMessage = action === 'attack' && rollMessage?.flags?.dnd5e?.roll?.type === 'attack' ? rollMessage : getOriginatingAttackMessage(originatingMessageId);
-		mastery = attackMessage?.flags?.dnd5e?.roll?.mastery;
+		attackMessage = action === 'attack' && rollMessage?.type === 'attack' ? rollMessage : getOriginatingAttackMessage(originatingMessageId);
+		mastery = attackMessage?.system?.mastery;
 		attackResult = summarizeAttackResult(attackMessage?.rolls?.[0]);
 	}
 
@@ -246,7 +247,7 @@ async function doAutoMasteries() {
 		const contextToken = action === 'damage' && midiActive ? getTokenFromUuid(pendingContext?.targetTokenUuid) : null;
 		const contextMessage =
 			contextToken ? getMessageWithTarget(target.message, contextToken)
-			: action === 'damage' && rollMessage?.flags?.dnd5e?.targets?.length ? rollMessage
+			: action === 'damage' && rollMessage?.system?.targets?.length ? rollMessage
 			: target.message;
 		const used = await WM_ACTIONS[toMasteryLabel(mastery)]?.({ message: contextMessage, shiftKey: false, el: target.el, attackResult });
 		logRsrMasteryDebug('used', { mastery, used, targetMessage: target.message, el: target.el });
@@ -258,8 +259,7 @@ async function doAutoMasteries() {
 }
 
 function getOriginatingAttackMessage(messageId) {
-	const attackMessage = dnd5e.registry.messages.get(messageId)?.findLast((m) => m.flags.dnd5e?.roll?.type === 'attack');
-	return attackMessage;
+	return dnd5e.registry.messages.get(messageId, 'attack')?.pop();
 }
 
 function getHookSubject(context) {
@@ -286,7 +286,7 @@ function getRsrTargetMessage(message) {
 	if (origin && origin !== message) return origin;
 	const associated = message.getAssociatedMessage?.();
 	if (associated && associated !== message) return associated;
-	return game.messages.get(message.flags?.dnd5e?.originatingMessage) ?? game.messages.get(message.system?.message) ?? message;
+	return message;
 }
 
 function logRsrMasteryDebug(step, data) {
@@ -316,15 +316,14 @@ function logRsrMasteryDebug(step, data) {
 				:	null,
 			rollCount: data.rolls?.length,
 			rollMastery: data.rolls?.[0]?.options?.mastery,
-			rollOriginatingMessage: data.rolls?.[0]?.parent?.flags?.dnd5e?.originatingMessage,
+			rollOriginatingMessage: data.rolls?.[0]?.parent?.getOriginatingMessage?.()?.id,
 			activityUuid: data.activity?.uuid,
 			pendingMessageId: data.pendingContext?.messageId,
 			pendingMastery: data.pendingContext?.mastery,
 			messageId: message?.id,
-			messageType: message?.flags?.dnd5e?.roll?.type,
-			messageMastery: message?.flags?.dnd5e?.roll?.mastery,
-			originatingMessage: message?.flags?.dnd5e?.originatingMessage,
-			systemMessage: message?.system?.message,
+			messageType: message?.type,
+			messageMastery: message?.system?.mastery,
+			originatingMessage: message?.getOriginatingMessage?.()?.id,
 			hasMessageEl: !!data.messageEl,
 			hasAnchor: !!data.el,
 			anchorText: data.el?.textContent?.trim(),
@@ -683,50 +682,29 @@ async function promptPushDistance(distances) {
 }
 
 function createMessageConfig({ activity, target, type = 'damage', rolls, flavor }) {
-	const messageConfig = {};
-	messageConfig.speaker = ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() });
-	messageConfig.flavor = flavor || 'a';
-	const flags = { dnd5e: {} };
-	flags.dnd5e.roll = { type };
-	const { item } = activity;
-	flags.dnd5e.item = {
-		type: item.type,
-		id: item.id,
-		uuid: item.uuid,
+	const messageConfig = {
+		type,
+		speaker: ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() }),
+		flavor: flavor || 'a',
+		system: { ...activity.messageSources, targets: getTargetDescriptors([target]) },
 	};
-	flags.dnd5e.activity = {
-		type: activity.type,
-		id: activity.id,
-		uuid: activity.uuid,
-	};
-	flags.dnd5e.targets = [
-		{
-			name: target.name,
-			uuid: target.actor.uuid,
-			ac: target.actor.system.attributes.ac.value,
-		},
-	];
-	messageConfig.flags = flags;
 	if (rolls) messageConfig.rolls = rolls;
 	return messageConfig;
 }
 
 function getMessageData(message) {
 	if (!message) return;
-	const dnd5eFlags = message.flags?.dnd5e ?? {};
-	const activityUuid = dnd5eFlags.activity?.uuid;
-	const itemUuid = dnd5eFlags.item?.uuid;
-	const { originatingMessage, roll, targets } = dnd5eFlags;
+	const { targets } = message.system ?? {};
 	const { speaker, rolls: attackRolls, isAuthor, speakerActor: attacker, author } = message;
 
-	const attackerToken = canvas.tokens.get(speaker.token);
-	const target = fromUuidSync(targets?.[0]?.uuid);
+	const attackerToken = message.getAssociatedToken?.()?.object ?? canvas.tokens.get(speaker.token);
+	const { actor: target, token: targetToken } = dnd5e.dataModels.chatMessage.fields.TargetsField.resolve(targets?.[0]);
 	if (!(target instanceof Actor)) return;
-	const targetToken = target?.token?.object || canvas.tokens.get(ChatMessage.getSpeaker({ actor: target })?.token);
 	if (!(targetToken?.actor instanceof Actor)) return;
-	const activity = fromUuidSync(activityUuid);
-	const item = fromUuidSync(itemUuid);
-	return { message, attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, roll, isAuthor, author };
+	const activity = message.getAssociatedActivity?.();
+	const item = message.getAssociatedItem?.();
+	const originatingMessage = message.getOriginatingMessage?.();
+	return { message, attacker: message.getAssociatedActor?.() ?? attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, isAuthor, author };
 }
 
 function getWorkflowTarget(workflow) {
@@ -743,10 +721,11 @@ function getTokenFromUuid(uuid) {
 }
 
 function getMessageWithTarget(message, token) {
-	const descriptor = getTargetDescriptor(token);
+	const [descriptor] = getTargetDescriptors([token]);
 	if (!message || !descriptor) return message;
-	const flags = foundry.utils.mergeObject(foundry.utils.duplicate(message.flags ?? {}), { dnd5e: { targets: [descriptor] } }, { inplace: false });
-	return Object.assign(Object.create(message), { flags });
+	const clone = Object.create(message);
+	Object.defineProperty(clone, 'system', { value: foundry.utils.mergeObject(foundry.utils.duplicate(message.system ?? {}), { targets: [descriptor] }, { inplace: false }) });
+	return clone;
 }
 
 function getActionContext({ message, shiftKey, requireFailure, requireSuccess, warning, attackResult }) {
@@ -801,7 +780,7 @@ async function doCleave({ message, shiftKey, el, attackResult }) {
 	const midiActive = game.modules.get('midi-qol')?.active;
 	if (midiActive) {
 		workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
-		workflow.targetDescriptors = [getTargetDescriptor(cleaveTarget)].filter(Boolean);
+		workflow.targetDescriptors = getTargetDescriptors([cleaveTarget]);
 		workflow.wm5e = true;
 		cleaveAttackRolls = await activity.rollAttack({ workflow, wm5e: true, wm5eNoMastery: true });
 		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
@@ -917,16 +896,18 @@ async function doSap({ message, shiftKey, el, attackResult }) {
 	};
 	const duration = { expiry: 'turnStart', value: attackerToken.combatant?.turnNumber > game.combat?.turn ? 0 : 1, units: 'turns' };
 	const existingEffect = target.appliedEffects.find((ae) => ae.name === effectName('Sap'));
-	if (existingEffect) return updateTargetEffect(target, existingEffect, { origin: item.uuid, duration, start });
+	if (existingEffect) return updateTargetEffect(target, existingEffect, { 'system.origin.item': item.uuid, duration, start });
 	const effectData = {
 		name: effectName('Sap'),
 		img: 'icons/skills/wounds/injury-face-impact-orange.webp',
-		origin: item.uuid,
 		disabled: false,
 		transfer: false,
 		duration,
 		start,
-		changes: [{ key: 'flags.automated-conditions-5e.attack.disadvantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once;' }],
+		system: {
+			origin: { item: item.uuid },
+			changes: [{ key: 'flags.automated-conditions-5e.attack.disadvantage', mode: 'custom', value: 'once;' }],
+		},
 		flags: {
 			wm5e: { source: 'Sap action' },
 		},
@@ -952,22 +933,18 @@ async function doSlow({ message, shiftKey, el, attackResult }) {
 	const duration = { expiry: 'turnStart', value: attackerToken.combatant?.turnNumber > game.combat?.turn ? 0 : 1, units: 'turns' };
 	const existingEffect = target.appliedEffects.find((ae) => ae.name === effectName('SlowWeaponMastery'));
 	if (existingEffect) {
-		await updateTargetEffect(target, existingEffect, { origin: item.uuid, duration, start });
+		await updateTargetEffect(target, existingEffect, { 'system.origin.item': item.uuid, duration, start });
 		return true;
 	}
-	const movementTypes = Object.entries(target.system.attributes.movement).filter(([key, value]) => key !== 'hover' && value > 0);
-	let changes;
-	if (foundry.utils.isNewerVersion(game.system.version, '5.2.0')) changes = [{ key: 'system.attributes.movement.bonus', mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2 * gridUnitDistance() }];
-	else changes = movementTypes.map(([key, value]) => ({ key: `system.attributes.movement.${key}`, mode: CONST.ACTIVE_EFFECT_MODES.ADD, value: -2 * gridUnitDistance() }));
+	const changes = [{ key: 'system.attributes.movement.bonus', mode: 'add', value: -2 * gridUnitDistance() }];
 	const effectData = {
 		name: effectName('SlowWeaponMastery'),
 		img: 'icons/magic/movement/chevrons-down-yellow.webp',
-		origin: item.uuid,
 		disabled: false,
 		transfer: false,
 		duration,
 		start,
-		changes,
+		system: { origin: { item: item.uuid }, changes },
 		flags: {
 			wm5e: { source: 'Slow action' },
 		},
@@ -982,7 +959,7 @@ async function doTopple({ message, shiftKey, el, attackResult }) {
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
-	if (target.statuses.prone) {
+	if (target.statuses.has('prone')) {
 		ui.notifications.warn(i18n('Notifications.ToppleAlreadyProne'));
 		return false;
 	}
@@ -991,7 +968,9 @@ async function doTopple({ message, shiftKey, el, attackResult }) {
 	const saveRolls = await doQueries('rollSave', { actorUuid: target.uuid, ability, dc, flavor: `${item.name} - Topple Save` });
 	if (saveRolls?.[0]?.total >= dc) return true;
 	const effectData = foundry.utils.duplicate(await ActiveEffect.implementation.fromStatusEffect('prone'));
-	effectData.origin = item.uuid;
+	effectData.system ??= {};
+	effectData.system.origin ??= {};
+	effectData.system.origin.item = item.uuid;
 	effectData.flags = effectData.flags || {};
 	effectData.flags.wm5e = { source: 'Topple action' };
 	if (target.isOwner) await target.createEmbeddedDocuments('ActiveEffect', [effectData], { keepId: true });
@@ -1002,7 +981,7 @@ async function doTopple({ message, shiftKey, el, attackResult }) {
 function isMatchingVexEffect(effect, attacker, attackerToken) {
 	if (effect.name !== effectName('Vex')) return false;
 	if (effect.flags?.wm5e?.attackerTokenUuid === attackerToken.document.uuid) return true;
-	const originItem = fromUuidSync(effect.origin);
+	const originItem = fromUuidSync(effect.system.origin?.item);
 	return originItem?.actor?.uuid === attacker.uuid;
 }
 
@@ -1022,16 +1001,18 @@ async function doVex({ message, shiftKey, el, attackResult }) {
 	const duration = { expiry: 'turnEnd', value: attackerToken.combatant?.turnNumber > game.combat?.turn ? 0 : 1, units: 'turns' };
 	const vexFlags = { source: 'Vex action', attackerUuid: attacker.uuid, attackerTokenUuid: attackerToken.document.uuid, itemUuid: item.uuid };
 	const existingEffect = target.appliedEffects.find((ae) => isMatchingVexEffect(ae, attacker, attackerToken));
-	if (existingEffect) return updateTargetEffect(target, existingEffect, { origin: item.uuid, duration, start, 'flags.wm5e': vexFlags });
+	if (existingEffect) return updateTargetEffect(target, existingEffect, { 'system.origin.item': item.uuid, duration, start, 'flags.wm5e': vexFlags });
 	const effectData = {
 		name: effectName('Vex'),
 		img: 'icons/magic/symbols/chevron-elipse-circle-blue.webp',
-		origin: item.uuid,
 		disabled: false,
 		transfer: false,
 		duration,
 		start,
-		changes: [{ key: 'flags.automated-conditions-5e.grants.attack.advantage', mode: CONST.ACTIVE_EFFECT_MODES.CUSTOM, value: 'once; effectOriginTokenId === tokenId && hasAttack' }],
+		system: {
+			origin: { item: item.uuid },
+			changes: [{ key: 'flags.automated-conditions-5e.grants.attack.advantage', mode: 'custom', value: 'once; effectOriginTokenId === tokenId && hasAttack' }],
+		},
 		flags: {
 			wm5e: vexFlags,
 		},
@@ -1093,12 +1074,8 @@ function registerQueries() {
 	CONFIG.queries[Constants.PUSH] = pushAction;
 }
 
-function getTargetDescriptor(token) {
-	const { name } = token;
-	const { img, system, uuid, statuses } = token.actor ?? {};
-	if (!uuid) return null;
-	const ac = statuses.has('coverTotal') ? null : system.attributes?.ac?.value;
-	return { name, img, uuid, ac: ac ?? null };
+function getTargetDescriptors(tokens) {
+	return dnd5e.dataModels.chatMessage.fields.TargetsField.getDescriptors(tokens);
 }
 
 class Wm5eLinksMenu extends HandlebarsApplicationMixin(ApplicationV2) {

@@ -15,7 +15,7 @@
   ],
   "compatibility": {
     "minimum": "14.367",
-    "verified": "14.367",
+    "verified": "14.368",
     "maximum": "14"
   },
   "esmodules": [
@@ -55,6 +55,11 @@
       "name": "English",
       "path": "lang/en.json",
       "flags": {}
+    },
+    {
+      "lang": "it",
+      "name": "Italiano",
+      "path": "lang/it.json"
     },
     {
       "lang": "pl",

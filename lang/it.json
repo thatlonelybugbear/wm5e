@@ -1,0 +1,60 @@
+{
+	"WM5E": {
+		"LinksMenu": {
+			"Name": "Supporto del modulo",
+			"Label": "Collegamenti",
+			"Hint": "Apri la documentazione di WM5E, il sistema di segnalazione dei problemi e i collegamenti per il supporto.",
+			"Title": "Risorse e supporto",
+			"GitHubMessage": "Collegamenti a GitHub",
+			"DiscordMessage": "Comunità",
+			"SupportMessage": "Offri una Moneta al tuo Bugbear"
+		},
+		"WeaponIdsMenu": {
+			"Name": "ID personalizzati Armi",
+			"Label": "Configura",
+			"Hint": "Associa chiavi arbitrarie degli oggetti base agli UUID degli Oggetti per il selettore della maestria delle armi di dnd5e.",
+			"Title": "ID personalizzati Armi",
+			"BaseItem": "Oggetto base",
+			"BaseItemPlaceholder": "es: psychicBlade",
+			"Uuid": "UUID dell'Oggetto",
+			"UuidPlaceholder": "Trascina un Oggetto da un compendio o incolla il suo UUID",
+			"HintText": "Scegli una breve chiave personalizzata, quindi collegala a un Oggetto di un compendio trascinando qui l'Oggetto o incollandone l'UUID. Le armi che utilizzano la stessa chiave come oggetto base e una maestria configurata potranno quindi comparire tra le opzioni di maestria delle armi di dnd5e.",
+			"Add": "Aggiungi"
+		},
+		"AutoMasteries": {
+			"Name": "Attiva automaticamente le maestrie",
+			"Hint": "Quando questa opzione è attiva (ogni utente deve abilitarla separatamente), le maestrie delle armi pertinenti verranno attivate automaticamente quando si effettuano attacchi con le armi interessate."
+		},
+		"NickReminder": {
+			"Name": "Pubblica promemoria di Graffio",
+			"Hint": "Quando questa opzione è attiva, Graffio pubblica il proprio messaggio di promemoria al completamento del tiro per colpire."
+		},
+		"NpcMasteries": {
+			"Name": "Abilita le maestrie dei PNG",
+			"Hint": "Quando questa opzione è attiva, le armi dei PNG con una maestria configurata possono utilizzare tale maestria quando effettuano attacchi."
+		},
+		"Effects": {
+			"Sap": "Prosciugamento",
+			"SlowWeaponMastery": "Lentezza (Maestria delle armi)",
+			"Vex": "Vessazione"
+		},
+		"Notifications": {
+			"CleaveRequiresSuccess": "Doppio Fendente può essere utilizzato solo con un tiro per colpire riuscito.",
+			"CleaveNoTargetsInRange": "Nessun bersaglio valido a portata per Doppio Fendente.",
+			"NoTargets": "Nessun bersaglio selezionato.",
+			"GrazeRequiresFailure": "Colpo di striscio può essere utilizzato solo con un tiro per colpire fallito.",
+			"GrazeRequiresPositiveModifier": "Colpo di striscio richiede un modificatore di caratteristica positivo per infliggere danni.",
+			"PushRequiresSuccess": "Spinta può essere utilizzata solo con un tiro per colpire riuscito.",
+			"PushSizeLimit": "Puoi spingere solo bersagli di taglia Grande o inferiore.",
+			"PushNoSpace": "Non c'è spazio dove spingere il bersaglio.",
+			"SapRequiresSuccess": "Prosciugamento può essere utilizzato solo con un tiro per colpire riuscito.",
+			"SapAlreadyApplied": "Il bersaglio è già sotto l'effetto di Prosciugamento.",
+			"SlowRequiresSuccess": "Lentezza può essere utilizzata solo con un tiro per colpire riuscito.",
+			"SlowAlreadyApplied": "Il bersaglio è già sotto l'effetto di Lentezza.",
+			"ToppleRequiresSuccess": "Rovesciamento può essere utilizzato solo con un tiro per colpire riuscito.",
+			"ToppleAlreadyProne": "Il bersaglio è già prono.",
+			"VexRequiresSuccess": "Vessazione può essere utilizzata solo con un tiro per colpire riuscito.",
+			"VexAlreadyApplied": "Il bersaglio è già influenzato dalla tua Vessazione."
+		}
+	}
+}

@@ -4,6 +4,7 @@
 * Migrated target descriptors to D&D5E's native `TargetsField` API for mastery workflows and action resolution.
 * Updated Active Effect data to use D&D5E v6's `system.origin` and `system.changes` schema.
 * Updated the minimum Automated Conditions 5e version to v14.603.1.
+* Added Italian translation by [GregoryWarn](<https://github.com/GregoryWarn/>) 🤗
 
 ## 14.533.6
 * Added a Custom Weapon IDs settings app for mapping custom weapon base item keys to compendium items for dnd5e weapon mastery choices.

@@ -1,3 +1,10 @@
+## 14.603.1
+* Compatibility bump for Foundry v14.367 and D&D5E v6.0.x.
+* Updated chat message, roll, activity, and originating-message handling for D&D5E v6.
+* Migrated target descriptors to D&D5E's native `TargetsField` API for mastery workflows and action resolution.
+* Updated Active Effect data to use D&D5E v6's `system.origin` and `system.changes` schema.
+* Updated the minimum Automated Conditions 5e version to v14.603.1.
+
 ## 14.533.6
 * Added a Custom Weapon IDs settings app for mapping custom weapon base item keys to compendium items for dnd5e weapon mastery choices.
   * To add a custom mastery option, choose a short base item key, map it to a compendium Item UUID in the new setting, set the weapon's `Base Item` to that same key, set the weapon's `Mastery`, and grant the actor mastery knowledge with an Active Effect change like `system.traits.weaponProf.mastery.value | add | yourKey`.

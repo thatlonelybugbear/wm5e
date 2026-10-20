@@ -12,30 +12,31 @@
 		"WeaponIdsMenu": {
 			"Name": "ID personalizzati Armi",
 			"Label": "Configura",
-			"Hint": "Associa chiavi arbitrarie degli oggetti base agli UUID degli Oggetti per il selettore della maestria delle armi di dnd5e.",
+			"Hint": "Associa chiavi arbitrarie degli oggetti base agli UUID degli Oggetti per il selettore della padronanza delle armi di dnd5e.",
 			"Title": "ID personalizzati Armi",
 			"BaseItem": "Oggetto base",
 			"BaseItemPlaceholder": "es: psychicBlade",
 			"Uuid": "UUID dell'Oggetto",
 			"UuidPlaceholder": "Trascina un Oggetto da un compendio o incolla il suo UUID",
-			"HintText": "Scegli una breve chiave personalizzata, quindi collegala a un Oggetto di un compendio trascinando qui l'Oggetto o incollandone l'UUID. Le armi che utilizzano la stessa chiave come oggetto base e una maestria configurata potranno quindi comparire tra le opzioni di maestria delle armi di dnd5e.",
+			"HintText": "Scegli una breve chiave personalizzata, quindi collegala a un Oggetto di un compendio trascinando qui l'Oggetto o incollandone l'UUID. Le armi che utilizzano la stessa chiave come oggetto base e una padronanza configurata potranno quindi comparire tra le opzioni di padronanza delle armi di dnd5e.",
 			"Add": "Aggiungi"
 		},
 		"AutoMasteries": {
-			"Name": "Attiva automaticamente le maestrie",
-			"Hint": "Quando questa opzione è attiva (ogni utente deve abilitarla separatamente), le maestrie delle armi pertinenti verranno attivate automaticamente quando si effettuano attacchi con le armi interessate."
+			"Name": "Padronanze Automatiche",
+			"Hint": "Scegli quali client utente attivano automaticamente le relative padronanze delle armi.",
+			"SelectAll": "Seleziona Tutto"
 		},
 		"NickReminder": {
 			"Name": "Pubblica promemoria di Graffio",
 			"Hint": "Quando questa opzione è attiva, Graffio pubblica il proprio messaggio di promemoria al completamento del tiro per colpire."
 		},
 		"NpcMasteries": {
-			"Name": "Abilita le maestrie dei PNG",
-			"Hint": "Quando questa opzione è attiva, le armi dei PNG con una maestria configurata possono utilizzare tale maestria quando effettuano attacchi."
+			"Name": "Abilita le padronanze dei PNG",
+			"Hint": "Quando questa opzione è attiva, le armi dei PNG con una padronanza configurata possono utilizzare tale padronanza quando effettuano attacchi."
 		},
 		"Effects": {
 			"Sap": "Prosciugamento",
-			"SlowWeaponMastery": "Lentezza (Maestria delle armi)",
+			"SlowWeaponMastery": "Lentezza (Padronanza delle armi)",
 			"Vex": "Vessazione"
 		},
 		"Notifications": {

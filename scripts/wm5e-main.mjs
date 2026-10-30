@@ -260,7 +260,8 @@ async function doAutoMasteries(rolls, activityContext, action) {
 		({ message: attackMessage, roll: attackRoll, rowId } = reference);
 	}
 	if (!attackMessage || !attackRoll) return;
-	const mastery = attackMessage.system?.mastery ?? attackRoll.options?.mastery ?? pendingContext?.mastery;
+	// Midi usage cards describe the weapon's mastery even when the attacker cannot use it.
+	const mastery = midiActive ? attackRoll.options?.mastery : (attackMessage.system?.mastery ?? attackRoll.options?.mastery);
 	if (!mastery) return;
 	const attackResult = pendingContext?.attackResult ?? summarizeAttackResult(attackRoll);
 	logRsrMasteryDebug('resolved', { action, mastery, attackMessage, attackResult, activity: getHookSubject(activityContext), midiActive, pendingContext });
@@ -822,7 +823,7 @@ function getActionContext({ message, shiftKey, requireFailure, requireSuccess, w
 }
 
 async function updateTargetEffect(target, effect, updates) {
-	if (target.isOwner) return effect.update(updates);
+	if (target.isOwner) return updateEffect({ effectUuid: effect.uuid, updates });
 	return doQueries('updateEffect', { effectUuid: effect.uuid, updates });
 }
 
@@ -843,43 +844,49 @@ async function doCleave({ message, shiftKey, el, attackResult, dialogPosition, .
 		return false;
 	}
 
-	if (validTargets.length === 1) setTargets([validTargets[0].id]);
-	const cleaveTarget = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.', dialogPosition);
-	if (!cleaveTarget) {
-		ui.notifications.info(i18n('Notifications.NoTargets'));
-		return false;
-	}
-	const mod = attacker.system.abilities[activity.ability ?? 'str'].mod;
-	const useMod = mod < 0;
 	let cleaveAttackRolls, workflow;
-	const midiActive = game.modules.get('midi-qol')?.active;
-	if (midiActive) {
-		workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
-		workflow.targetDescriptors = getTargetDescriptors([cleaveTarget]);
-		workflow.wm5e = true;
-		cleaveAttackRolls = await activity.rollAttack({ workflow, wm5e: true, wm5eNoMastery: true }, dialogPosition ? { options: { position: dialogPosition } } : {});
-		await cleaveAttackRolls?.[0]?.toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
-	} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true, wm5eNoMastery: true }, dialogPosition ? { options: { position: dialogPosition } } : {});
-	if (!cleaveAttackRolls?.length) {
-		await setTargets([targetToken.id]);
-		return false;
-	}
-	if (cleaveAttackRolls[0].isSuccess) {
-		const config = {
-			attackMode: 'offhand',
-			isCritical: cleaveAttackRolls[0].isCritical,
-			wm5eNoMastery: true,
-		};
+	try {
+		if (validTargets.length === 1) await setTargets([validTargets[0].id]);
+		const cleaveTarget = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.', dialogPosition);
+		if (!cleaveTarget) {
+			ui.notifications.info(i18n('Notifications.NoTargets'));
+			return false;
+		}
+		const midiActive = game.modules.get('midi-qol')?.active;
 		if (midiActive) {
-			workflow.attackMode = 'offhand';
-			workflow.isCritical = cleaveAttackRolls[0].isCritical;
-			config.workflow = workflow;
-			const cleaveDamageRolls = await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {});
-			const messageConfig = createMessageConfig({ activity, target: cleaveTarget, type: 'damage', rolls: cleaveDamageRolls });
-			await ChatMessage.implementation.create(messageConfig);
-		} else await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {});
+			workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
+			workflow.targetDescriptors = getTargetDescriptors([cleaveTarget]);
+			workflow.wm5e = true;
+			cleaveAttackRolls = await activity.rollAttack({ workflow, wm5e: true, wm5eNoMastery: true }, dialogPosition ? { options: { position: dialogPosition } } : {});
+		} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true, wm5eNoMastery: true }, dialogPosition ? { options: { position: dialogPosition } } : {});
+		if (!cleaveAttackRolls?.length) return false;
+		// The extra attack spends Cleave even if its chat message or damage subsequently fails.
+		if (midiActive) await cleaveAttackRolls[0].toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
+		if (cleaveAttackRolls[0].isSuccess) {
+			const config = {
+				attackMode: 'offhand',
+				isCritical: cleaveAttackRolls[0].isCritical,
+				wm5eNoMastery: true,
+			};
+			if (midiActive) {
+				workflow.attackMode = 'offhand';
+				workflow.isCritical = cleaveAttackRolls[0].isCritical;
+				config.workflow = workflow;
+				const cleaveDamageRolls = await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {});
+				const messageConfig = createMessageConfig({ activity, target: cleaveTarget, type: 'damage', rolls: cleaveDamageRolls });
+				await ChatMessage.implementation.create(messageConfig);
+			} else await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {});
+		}
+	} catch (error) {
+		if (!cleaveAttackRolls?.length) throw error;
+		console.error(`${Constants.MODULE_NAME} | Cleave attack was made, but follow-up processing failed:`, error);
+	} finally {
+		try {
+			await setTargets([targetToken.id]);
+		} catch (error) {
+			console.error(`${Constants.MODULE_NAME} | Unable to restore targets after Cleave:`, error);
+		}
 	}
-	await setTargets([targetToken.id]);
 	return true;
 }
 
@@ -1109,7 +1116,10 @@ async function createEffects({ actorUuid, effects, options } = {}) {
 
 async function updateEffect({ effectUuid, updates } = {}) {
 	const effect = await fromUuid(effectUuid);
-	return effect?.update(updates);
+	if (!effect) return false;
+	const expected = foundry.utils.deepClone(updates);
+	if ((await effect.update(updates)) === false) return false;
+	return foundry.utils.isEmpty(effect.updateSource(expected, { dryRun: true, clean: true, fallback: false }));
 }
 
 async function pushAction({ tokenUuid, waypoints }) {
@@ -1498,6 +1508,7 @@ async function claimMastery({ messageId, mastery, rowId, token, used } = {}, { u
 			MASTERY_ACTOR_UPDATES.set(actorKey, update);
 			try {
 				await update;
+				if (!existing.actor.getFlag(Constants.MODULE_ID, `masteryTurns.${mastery}`)?.includes(existing.turn)) return false;
 			} finally {
 				if (MASTERY_ACTOR_UPDATES.get(actorKey) === update) MASTERY_ACTOR_UPDATES.delete(actorKey);
 			}
@@ -1545,8 +1556,9 @@ async function persistMasteryUsed({ messageId, mastery, rowId } = {}, { user = g
 	if (!message?.canUserModify(game.user, 'update')) return false;
 	if (!canUseMastery(message, user)) return false;
 	if (rowId) await message.setFlag(Constants.MODULE_ID, `usedMasteryRows.${masteryRowKey(rowId)}.${mastery}`, true);
+	if (rowId && message.getFlag(Constants.MODULE_ID, `usedMasteryRows.${masteryRowKey(rowId)}.${mastery}`) !== true) return false;
 	if (!message.getFlag(Constants.MODULE_ID, `usedMasteries.${mastery}`)) await message.setFlag(Constants.MODULE_ID, `usedMasteries.${mastery}`, true);
-	return true;
+	return message.getFlag(Constants.MODULE_ID, `usedMasteries.${mastery}`) === true;
 }
 
 function renderUsedMasteries(message, html) {

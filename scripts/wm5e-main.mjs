@@ -260,7 +260,7 @@ async function doAutoMasteries(rolls, activityContext, action) {
 		({ message: attackMessage, roll: attackRoll, rowId } = reference);
 	}
 	if (!attackMessage || !attackRoll) return;
-	const mastery = attackMessage.system?.mastery ?? attackRoll.options?.mastery ?? pendingContext?.mastery;
+	const mastery = midiActive ? attackRoll.options?.mastery : (attackMessage.system?.mastery ?? attackRoll.options?.mastery);
 	if (!mastery) return;
 	const attackResult = pendingContext?.attackResult ?? summarizeAttackResult(attackRoll);
 	logRsrMasteryDebug('resolved', { action, mastery, attackMessage, attackResult, activity: getHookSubject(activityContext), midiActive, pendingContext });

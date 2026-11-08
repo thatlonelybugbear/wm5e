@@ -260,7 +260,6 @@ async function doAutoMasteries(rolls, activityContext, action) {
 		({ message: attackMessage, roll: attackRoll, rowId } = reference);
 	}
 	if (!attackMessage || !attackRoll) return;
-	// Midi usage cards describe the weapon's mastery even when the attacker cannot use it.
 	const mastery = midiActive ? attackRoll.options?.mastery : (attackMessage.system?.mastery ?? attackRoll.options?.mastery);
 	if (!mastery) return;
 	const attackResult = pendingContext?.attackResult ?? summarizeAttackResult(attackRoll);

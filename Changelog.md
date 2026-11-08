@@ -1,3 +1,6 @@
+## 14.606.2.1
+* Fixed an issue with MidiQOL full automation that could apply weapon mastery effects even when the attacker had not mastered the weapon.
+
 ## 14.606.2
 * Push now respects walls and movement restrictions without spending the target's movement. Blocked destinations are excluded from the distance choices.
 * Automatic masteries now work even when other modules hide mastery links or tags.

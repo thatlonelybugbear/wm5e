@@ -80,7 +80,7 @@
   "bugs": "https://github.com/thatlonelybugbear/wm5e/issues",
   "url": "https://github.com/thatlonelybugbear/wm5e",
   "license": "https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/LICENSE",
-  "manifest": "https://github.com/thatlonelybugbear/wm5e/releases/latest/download/module.json",
+  "manifest": "https://github.com/thatlonelybugbear/wm5e/releases/download/v14.533.6.1/module.json",
   "download": "https://github.com/thatlonelybugbear/wm5e/releases/download/v14.533.6.1/module.zip",
   "changelog": "https://raw.githubusercontent.com/thatlonelybugbear/wm5e/main/Changelog.md"
 }

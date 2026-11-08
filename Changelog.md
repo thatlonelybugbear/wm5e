@@ -1,3 +1,6 @@
+## 14.606.2.2
+* If that target is immune to Prone condition, the Topple mastery will return early and display a message in chat.
+
 ## 14.606.2.1
 * Fixed an issue with MidiQOL full automation that could apply weapon mastery effects even when the attacker had not mastered the weapon.
 

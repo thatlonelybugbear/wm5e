@@ -1,3 +1,6 @@
+## 14.530.1.3
+* If a target is immune to Prone condition, the Topple mastery will return early and display a message in chat.
+
 ## 14.530.1.2
 * `module.json` quick fix
 

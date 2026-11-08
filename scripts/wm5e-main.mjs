@@ -677,8 +677,12 @@ async function doTopple({ message, shiftKey, el }) {
 	if (!context) return false;
 	const { attacker, attackerToken, target, targetToken, activity, item } = context;
 	if (!attackerToken || !targetToken || !activity) return false;
+	if (target.system.traits?.ci?.value?.has('prone')) {
+		ui.notifications.info(i18n('Notifications.ToppleImmuneProne'));
+		return false;
+	}
 	if (target.statuses.prone) {
-		ui.notifications.warn(i18n('Notifications.ToppleAlreadyProne'));
+		ui.notifications.info(i18n('Notifications.ToppleAlreadyProne'));
 		return false;
 	}
 	const ability = 'con';

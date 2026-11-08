@@ -1,3 +1,7 @@
+## 14.610.1
+* Verified compatibility with Foundry v14.370 and D&D5E with the pre-release of v6.1
+* Automated Conditions 5e minimum version updated to v14.610.1
+
 ## 14.606.2.2
 * If that target is immune to Prone condition, the Topple mastery will return early and display a message in chat.
 

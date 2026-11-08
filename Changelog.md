@@ -1,3 +1,6 @@
+## 14.533.6.1
+* If a target is immune to Prone condition, the Topple mastery will return early and display a message in chat.
+
 ## 14.533.6
 * Added a Custom Weapon IDs settings app for mapping custom weapon base item keys to compendium items for dnd5e weapon mastery choices.
   * To add a custom mastery option, choose a short base item key, map it to a compendium Item UUID in the new setting, set the weapon's `Base Item` to that same key, set the weapon's `Mastery`, and grant the actor mastery knowledge with an Active Effect change like `system.traits.weaponProf.mastery.value | add | yourKey`.

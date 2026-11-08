@@ -53,6 +53,7 @@
 			"SlowAlreadyApplied": "Target is already slowed.",
 			"ToppleRequiresSuccess": "Topple can only be used on a successful attack roll.",
 			"ToppleAlreadyProne": "Target is already prone.",
+			"ToppleImmuneProne": "Target is immune to Prone. Topple cannot be used!",
 			"VexRequiresSuccess": "Vex can only be used on a successful attack roll.",
 			"VexAlreadyApplied": "Target is already affected by your Vex."
 		}

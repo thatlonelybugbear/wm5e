@@ -612,8 +612,8 @@ function getMasteryReferenceSheet(documentRef) {
 	return documentRef.sheet ?? null;
 }
 
-function gridUnitDistance() {
-	return canvas?.grid?.distance || 5;
+function gridUnitDistance(scene = canvas?.scene) {
+	return scene?.grid?.distance || 5;
 }
 
 function getActivityDamageType(activity, attackRoll) {
@@ -642,7 +642,8 @@ function getActivityDamageType(activity, attackRoll) {
 	return null;
 }
 
-function setTargets(targetIds, { mode = 'replace' } = {}) {
+function setTargets(targetIds, { mode = 'replace', scene = canvas.scene, level = canvas.level } = {}) {
+	if (!canvas.ready || scene !== canvas.scene || level !== canvas.level) return;
 	return canvas.tokens.setTargets(targetIds, { mode });
 }
 
@@ -651,11 +652,12 @@ const TARGET_DIALOG_SELECTOR = '.application.dialog.wm5e-target-dialog';
 async function prepareTargetSelectionData(targets) {
 	const preparedTargets = [];
 	for (const t of targets) {
-		let img = t.document.texture.src;
+		const token = t.document ?? t;
+		let img = token.texture.src;
 		if (foundry.helpers.media.VideoHelper.hasVideoExtension(img)) {
 			img = (await game.video?.createThumbnail(img, { width: 50, height: 50 })) ?? '';
 		}
-		preparedTargets.push({ id: t.id, name: t.name, img });
+		preparedTargets.push({ id: token.id, name: token.name, img });
 	}
 	return preparedTargets;
 }
@@ -665,7 +667,7 @@ function getLatestTargetDialogElement() {
 	return dialogs[dialogs.length - 1] ?? null;
 }
 
-function decorateTargetDialog(dialogEl, preparedTargets) {
+function decorateTargetDialog(dialogEl, preparedTargets, targeting) {
 	if (!dialogEl || dialogEl.dataset.wm5eDecorated === 'true') return false;
 	dialogEl.dataset.wm5eDecorated = 'true';
 
@@ -674,13 +676,13 @@ function decorateTargetDialog(dialogEl, preparedTargets) {
 		if (!btn || !dialogEl.contains(btn)) return;
 		const id = btn.getAttribute('data-action');
 		if (!id) return;
-		setTargets([id]);
+		setTargets([id], targeting);
 	});
 
 	dialogEl.addEventListener('pointerout', (ev) => {
 		const btn = ev.target.closest('button');
 		if (!btn || !dialogEl.contains(btn)) return;
-		setTargets([]);
+		setTargets([], targeting);
 	});
 
 	for (const t of preparedTargets) {
@@ -699,11 +701,11 @@ function decorateTargetDialog(dialogEl, preparedTargets) {
 	return true;
 }
 
-function scheduleTargetDialogDecoration(preparedTargets, attempts = 8) {
+function scheduleTargetDialogDecoration(preparedTargets, attempts = 8, targeting) {
 	let remaining = attempts;
 	const tryDecorate = () => {
 		const dialogEl = getLatestTargetDialogElement();
-		if (decorateTargetDialog(dialogEl, preparedTargets)) return;
+		if (decorateTargetDialog(dialogEl, preparedTargets, targeting)) return;
 		remaining -= 1;
 		if (remaining > 0) requestAnimationFrame(tryDecorate);
 	};
@@ -725,6 +727,8 @@ function getMasteryDialogPosition(event, element = event?.target) {
 }
 
 async function promptTargetSelection(targets, multiple, title = 'Select Target', position) {
+	const documents = targets.map((token) => token.document ?? token);
+	const targeting = { scene: documents[0]?.parent, level: canvas.level };
 	const preparedTargets = await prepareTargetSelectionData(targets);
 	const selectPromise = foundry.applications.api.DialogV2.wait({
 		window: { title },
@@ -734,20 +738,13 @@ async function promptTargetSelection(targets, multiple, title = 'Select Target',
 		buttons: preparedTargets.map((t) => ({ label: t.name, action: t.id })),
 		classes: ['wm5e', 'wm5e-target-dialog'],
 	});
-	scheduleTargetDialogDecoration(preparedTargets);
+	scheduleTargetDialogDecoration(preparedTargets, 8, targeting);
 	const select = await selectPromise;
 	if (!select) return false;
-	await new Promise((resolve) => {
-		setTimeout(() => {
-			setTargets([select]);
-			resolve();
-		}, 15);
-	});
-	return canvas.tokens.get(select);
+	return documents.find((token) => token.id === select) ?? false;
 }
 
-async function promptPushDistance(distances, position) {
-	const gridUnits = canvas.grid?.units || '';
+async function promptPushDistance(distances, position, gridUnits = canvas.grid?.units || '') {
 	const distance = await foundry.applications.api.DialogV2.wait({
 		window: { title: 'Mastery: Push' },
 		...(position ? { position } : {}),
@@ -759,10 +756,10 @@ async function promptPushDistance(distances, position) {
 	return Number(distance) || 0;
 }
 
-function createMessageConfig({ activity, target, type = 'damage', rolls, flavor }) {
+function createMessageConfig({ activity, target, token = activity.getUsageToken(), type = 'damage', rolls, flavor }) {
 	const messageConfig = {
 		type,
-		speaker: ChatMessage.implementation.getSpeaker({ token: activity.getUsageToken() }),
+		speaker: ChatMessage.implementation.getSpeaker({ token }),
 		flavor: flavor || 'a',
 		system: { ...activity.messageSources, targets: getTargetDescriptors([target]) },
 	};
@@ -770,18 +767,22 @@ function createMessageConfig({ activity, target, type = 'damage', rolls, flavor 
 	return messageConfig;
 }
 
-function getMessageData(message, { targets = message?.system?.targets, targetToken: selectedTarget } = {}) {
+function getMessageData(message, { targets = message?.system?.targets, targetToken: selectedTarget, requireTarget = true } = {}) {
 	if (!message) return;
 	const { speaker, rolls: attackRolls, isAuthor, speakerActor: attacker, author } = message;
 
-	const attackerToken = message.getAssociatedToken?.()?.object ?? canvas.tokens.get(speaker?.token);
-	const { actor: target, token: targetToken } = selectedTarget ? { actor: selectedTarget.actor, token: selectedTarget } : dnd5e.dataModels.chatMessage.fields.TargetsField.resolve(targets?.[0]);
-	if (!(target instanceof Actor)) return;
-	if (!(targetToken?.actor instanceof Actor)) return;
+	const attackerTokenDocument = message.getAssociatedToken?.() ?? (speaker?.scene && speaker?.token ? getTokenFromUuid(`Scene.${speaker.scene}.Token.${speaker.token}`) : null);
+	const descriptor = targets?.[0];
+	const targetTokenDocument = selectedTarget ? selectedTarget.document ?? selectedTarget : getTokenFromUuid(descriptor?.token);
+	if (requireTarget && (selectedTarget || descriptor?.token) && !targetTokenDocument) return;
+	const target = targetTokenDocument?.actor ?? (!descriptor?.token && descriptor?.actor ? fromUuidSync(descriptor.actor, { strict: false }) : null);
+	if (requireTarget && !(target instanceof Actor)) return;
+	const attackerToken = attackerTokenDocument?.parent === canvas?.scene ? attackerTokenDocument?.object : null;
+	const targetToken = targetTokenDocument?.parent === canvas?.scene ? targetTokenDocument?.object : null;
 	const activity = message.getAssociatedActivity?.();
 	const item = message.getAssociatedItem?.();
 	const originatingMessage = message.getOriginatingMessage?.();
-	return { message, attacker: message.getAssociatedActor?.() ?? attacker, attackerToken, target, targetToken, activity, item, originatingMessage, attackRolls, isAuthor, author };
+	return { message, attacker: attackerTokenDocument?.actor ?? message.getAssociatedActor?.() ?? attacker, attackerTokenDocument, attackerToken, target, targetTokenDocument, targetToken, activity, item, originatingMessage, attackRolls, isAuthor, author };
 }
 
 function getWorkflowTarget(workflow) {
@@ -799,8 +800,8 @@ function getMidiAttackResult(workflow, targetToken) {
 }
 
 function getTokenFromUuid(uuid) {
-	const documentRef = uuid ? fromUuidSync(uuid) : null;
-	if (documentRef instanceof TokenDocument) return documentRef.object;
+	const documentRef = uuid ? fromUuidSync(uuid, { strict: false }) : null;
+	if (documentRef instanceof TokenDocument) return documentRef;
 	return null;
 }
 
@@ -826,17 +827,28 @@ async function updateTargetEffect(target, effect, updates) {
 	return doQueries('updateEffect', { effectUuid: effect.uuid, updates });
 }
 
+function hasMasteryGeometry({ attackerTokenDocument, targetTokenDocument, attackerToken, targetToken }, level = canvas?.level) {
+	if (canvas?.ready && canvas.level === level && attackerTokenDocument?.parent === canvas.scene && targetTokenDocument?.parent === canvas.scene && attackerTokenDocument.rendered && targetTokenDocument.rendered && attackerToken && targetToken && attackerTokenDocument.object === attackerToken && targetTokenDocument.object === targetToken) return true;
+	ui.notifications.info(i18n('Notifications.MasteryGeometryUnavailable'));
+	return false;
+}
+
+function getCleaveTargets({ attackerToken, targetToken, targetTokenDocument, activity }) {
+	const distance = gridUnitDistance(targetTokenDocument.parent);
+	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', activity.range.reach || distance);
+	const inRangeTarget = ac5e.checkNearby(targetToken, 'all', distance);
+	return inRangeAttacker
+		.filter((token) => token.document.rendered && token.document.parent === targetTokenDocument.parent && token.document.uuid !== targetTokenDocument.uuid && inRangeTarget.some((other) => other.document.uuid === token.document.uuid))
+		.map((token) => token.document);
+}
+
 async function doCleave({ message, shiftKey, el, attackResult, dialogPosition, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.CleaveRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, target, targetToken, activity, item, originatingMessage, isAuthor } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
-
-	const range = activity.range.reach || gridUnitDistance();
-
-	const inRangeAttacker = ac5e.checkNearby(attackerToken, '!ally', range);
-	const inRangeTarget = ac5e.checkNearby(targetToken, 'all', gridUnitDistance());
-	const validTargets = inRangeAttacker.filter((t1) => t1.id !== targetToken.id && inRangeTarget.some((t2) => t2.id === t1.id));
+	const { attacker, attackerTokenDocument, targetTokenDocument, activity } = context;
+	if (!activity || !hasMasteryGeometry(context)) return false;
+	const targeting = { scene: targetTokenDocument.parent, level: canvas.level };
+	const validTargets = getCleaveTargets(context);
 
 	if (!validTargets.length) {
 		ui.notifications.warn(i18n('Notifications.CleaveNoTargetsInRange'));
@@ -845,23 +857,36 @@ async function doCleave({ message, shiftKey, el, attackResult, dialogPosition, .
 
 	let cleaveAttackRolls, workflow;
 	try {
-		if (validTargets.length === 1) await setTargets([validTargets[0].id]);
+		if (validTargets.length === 1) await setTargets([validTargets[0].id], targeting);
 		const cleaveTarget = await promptTargetSelection(validTargets, 1, 'Select target for Cleave.', dialogPosition);
 		if (!cleaveTarget) {
 			ui.notifications.info(i18n('Notifications.NoTargets'));
 			return false;
 		}
+		if (!hasMasteryGeometry(context, targeting.level)) return false;
+		await setTargets([cleaveTarget.id], targeting);
+		if (!hasMasteryGeometry(context, targeting.level)) return false;
+		if (!getCleaveTargets(context).some((token) => token.uuid === cleaveTarget.uuid)) {
+			ui.notifications.warn(i18n('Notifications.CleaveNoTargetsInRange'));
+			return false;
+		}
+		const speaker = ChatMessage.implementation.getSpeaker({ token: attackerTokenDocument });
+		const targets = getTargetDescriptors([cleaveTarget]);
+		const rollMessage = { data: { speaker, system: { targets } } };
+		const attackConfig = { target: targets[0]?.ac, wm5e: true, wm5eNoMastery: true };
 		const midiActive = game.modules.get('midi-qol')?.active;
 		if (midiActive) {
-			workflow = new MidiQOL.Workflows.Workflow(attacker, activity, ChatMessage.implementation.getSpeaker({ token: attackerToken }), new Set([cleaveTarget]), {});
-			workflow.targetDescriptors = getTargetDescriptors([cleaveTarget]);
+			workflow = new MidiQOL.Workflows.Workflow(attacker, activity, speaker, new Set([cleaveTarget.object]), {});
+			workflow.targetDescriptors = targets;
 			workflow.wm5e = true;
-			cleaveAttackRolls = await activity.rollAttack({ workflow, wm5e: true, wm5eNoMastery: true }, dialogPosition ? { options: { position: dialogPosition } } : {});
-		} else cleaveAttackRolls = await activity.rollAttack({ wm5e: true, wm5eNoMastery: true }, dialogPosition ? { options: { position: dialogPosition } } : {});
+			attackConfig.workflow = workflow;
+		}
+		cleaveAttackRolls = await activity.rollAttack(attackConfig, dialogPosition ? { options: { position: dialogPosition } } : {}, rollMessage);
 		if (!cleaveAttackRolls?.length) return false;
 		// The extra attack spends Cleave even if its chat message or damage subsequently fails.
-		if (midiActive) await cleaveAttackRolls[0].toMessage(createMessageConfig({ activity, target: cleaveTarget, type: 'attack' }));
+		if (midiActive) await cleaveAttackRolls[0].toMessage(createMessageConfig({ activity, token: attackerTokenDocument, target: cleaveTarget, type: 'attack' }));
 		if (cleaveAttackRolls[0].isSuccess) {
+			if (!hasMasteryGeometry(context, targeting.level)) return true;
 			const config = {
 				attackMode: 'offhand',
 				isCritical: cleaveAttackRolls[0].isCritical,
@@ -871,17 +896,17 @@ async function doCleave({ message, shiftKey, el, attackResult, dialogPosition, .
 				workflow.attackMode = 'offhand';
 				workflow.isCritical = cleaveAttackRolls[0].isCritical;
 				config.workflow = workflow;
-				const cleaveDamageRolls = await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {});
-				const messageConfig = createMessageConfig({ activity, target: cleaveTarget, type: 'damage', rolls: cleaveDamageRolls });
+				const cleaveDamageRolls = await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {}, rollMessage);
+				const messageConfig = createMessageConfig({ activity, token: attackerTokenDocument, target: cleaveTarget, type: 'damage', rolls: cleaveDamageRolls });
 				await ChatMessage.implementation.create(messageConfig);
-			} else await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {});
+			} else await activity.rollDamage(config, dialogPosition ? { options: { position: dialogPosition } } : {}, rollMessage);
 		}
 	} catch (error) {
 		if (!cleaveAttackRolls?.length) throw error;
 		console.error(`${Constants.MODULE_NAME} | Cleave attack was made, but follow-up processing failed:`, error);
 	} finally {
 		try {
-			await setTargets([targetToken.id]);
+			await setTargets([targetTokenDocument.id], targeting);
 		} catch (error) {
 			console.error(`${Constants.MODULE_NAME} | Unable to restore targets after Cleave:`, error);
 		}
@@ -892,8 +917,8 @@ async function doCleave({ message, shiftKey, el, attackResult, dialogPosition, .
 async function doGraze({ message, shiftKey, el, attackResult, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireFailure: true, warning: 'Notifications.GrazeRequiresFailure', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, targetToken, activity, attackRoll } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
+	const { attacker, attackerTokenDocument, targetTokenDocument, activity, attackRoll } = context;
+	if (!attackerTokenDocument || !targetTokenDocument || !activity) return false;
 	const abilityId = attackRoll?.options?.ability ?? message.system?.ability ?? activity.ability ?? 'str';
 	const ability = attacker?.system?.abilities?.[abilityId];
 	if (!ability) return false;
@@ -912,16 +937,16 @@ async function doGraze({ message, shiftKey, el, attackResult, ...attackContext }
 			}
 		:	{};
 	options.flavor = label;
-	const messageConfig = createMessageConfig({ activity, target: targetToken, flavor: `${activity.item.name} - ${label}`, type: 'damage' });
+	const messageConfig = createMessageConfig({ activity, token: attackerTokenDocument, target: targetTokenDocument, flavor: `${activity.item.name} - ${label}`, type: 'damage' });
 	messageConfig.system.activity = { ...messageConfig.system.activity, name: label };
 	return !!(await new CONFIG.Dice.DamageRoll(String(mod), attacker.getRollData(), options).toMessage(messageConfig));
 }
 
 async function doNick({ message, shiftKey, el, ...attackContext }) {
-	const { attackerToken } = getMessageData(message, attackContext) || {};
-	if (!attackerToken) return false;
+	const { attackerTokenDocument } = getMessageData(message, { ...attackContext, requireTarget: false }) || {};
+	if (!attackerTokenDocument) return false;
 	const { text: { content } = {} } = await fromUuid(getMasteryReference('nick'));
-	const speaker = ChatMessage.implementation.getSpeaker({ token: attackerToken });
+	const speaker = ChatMessage.implementation.getSpeaker({ token: attackerTokenDocument });
 	// This only posts the reminder; it does not grant or spend the Light property's extra attack.
 	return !!(await ChatMessage.implementation.create({ content, speaker, flavor: 'Mastery Nick' }));
 }
@@ -929,9 +954,10 @@ async function doNick({ message, shiftKey, el, ...attackContext }) {
 async function doPush({ message, shiftKey, el, attackResult, dialogPosition, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, targetToken, target, activity } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
-	const targetTokenSize = Math.max(targetToken.document.width, targetToken.document.height);
+	const { attackerToken, targetToken, targetTokenDocument, target, activity } = context;
+	if (!activity || !hasMasteryGeometry(context)) return false;
+	const level = canvas.level;
+	const targetTokenSize = Math.max(targetTokenDocument.width, targetTokenDocument.height);
 	if (targetTokenSize > 2 && !shiftKey) {
 		ui.notifications.warn(i18n('Notifications.PushSizeLimit'));
 		return false;
@@ -939,29 +965,38 @@ async function doPush({ message, shiftKey, el, attackResult, dialogPosition, ...
 	const { angle } = new foundry.canvas.geometry.Ray(attackerToken.center, targetToken.center);
 	const direction = Math.normalizeDegrees(Math.toDegrees(angle));
 	const positions = new Map();
-	for (const distance of [1, 2].map((multiplier) => multiplier * (canvas.grid?.distance || 5))) {
-		const position = getPushPosition(targetToken, direction, (distance / (canvas.grid?.distance || 5)) * gridUnitDistance());
+	for (const distance of [1, 2].map((multiplier) => multiplier * gridUnitDistance(targetTokenDocument.parent))) {
+		const position = getPushPosition(targetToken, direction, distance);
 		if (position) positions.set(distance, position);
 	}
 	if (!positions.size) {
 		ui.notifications.warn(i18n('Notifications.PushNoSpace'));
 		return false;
 	}
-	const pushDistance = await promptPushDistance([...positions.keys()], dialogPosition);
+	const pushDistance = await promptPushDistance([...positions.keys()], dialogPosition, targetTokenDocument.parent.grid.units);
 	if (!pushDistance) return false;
-	const data = { tokenUuid: targetToken.document.uuid, waypoints: positions.get(pushDistance) };
+	if (!positions.has(pushDistance) || !hasMasteryGeometry(context, level)) return false;
+	const { angle: currentAngle } = new foundry.canvas.geometry.Ray(attackerToken.center, targetToken.center);
+	const waypoints = getPushPosition(targetToken, Math.normalizeDegrees(Math.toDegrees(currentAngle)), pushDistance);
+	if (!waypoints) {
+		ui.notifications.warn(i18n('Notifications.PushNoSpace'));
+		return false;
+	}
+	const { x, y, elevation, level: targetLevel } = targetTokenDocument;
+	const data = { tokenUuid: targetTokenDocument.uuid, waypoints, origin: { x, y, elevation, level: targetLevel } };
 	const pushed = target.isOwner ? await pushAction(data) : await doQueries('push', data);
 	if (!pushed) return false;
 	return true;
 }
 
 function getPushPosition(targetToken, direction, maxDistance) {
+	const { x, y, elevation, level } = targetToken.document;
 	for (const offset of [0, 45, -45]) {
 		const point = canvas.grid.getTranslatedPoint(targetToken, direction + offset, maxDistance);
-		const snapped = targetToken.getSnappedPosition(point);
+		const snapped = targetToken.document.getSnappedPosition({ ...point, elevation, level });
 		const path = targetToken.findMovementPath([
-			{ x: targetToken.x, y: targetToken.y, action: 'wm5ePush' },
-			{ ...snapped, snapped: true, action: 'wm5ePush' },
+			{ x, y, elevation, level, action: 'wm5ePush' },
+			{ ...snapped, elevation, level, snapped: true, action: 'wm5ePush' },
 		], { constrainOptions: { ignoreWalls: false, ignoreTokens: false } });
 		const destination = path.result?.at(-1);
 		if (path.result?.length > 1 && destination.x === snapped.x && destination.y === snapped.y) return path.result.slice(1);
@@ -972,8 +1007,8 @@ function getPushPosition(targetToken, direction, maxDistance) {
 async function doSap({ message, shiftKey, el, attackResult, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.SapRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, target, targetToken, activity, item } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
+	const { target, activity, item } = context;
+	if (!activity || !item) return false;
 	const start = ActiveEffect.implementation.getEffectStart();
 	const duration = { expiry: 'sourceStart', value: null, units: 'seconds' };
 	const existingEffect = target.appliedEffects.find((ae) => ae.name === effectName('Sap'));
@@ -1000,13 +1035,13 @@ async function doSap({ message, shiftKey, el, attackResult, ...attackContext }) 
 async function doSlow({ message, shiftKey, el, attackResult, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.SlowRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, target, targetToken, activity, item } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
+	const { target, targetTokenDocument, activity, item } = context;
+	if (!activity || !item) return false;
 	const start = ActiveEffect.implementation.getEffectStart();
 	const duration = { expiry: 'sourceStart', value: null, units: 'seconds' };
 	const existingEffect = target.appliedEffects.find((ae) => ae.name === effectName('SlowWeaponMastery'));
 	if (existingEffect) return updateTargetEffect(target, existingEffect, { 'system.origin.item': item.uuid, duration, start });
-	const changes = [{ key: 'system.attributes.movement.bonus', type: 'add', value: -2 * gridUnitDistance() }];
+	const changes = [{ key: 'system.attributes.movement.bonus', type: 'add', value: -2 * gridUnitDistance(targetTokenDocument?.parent ?? null) }];
 	const effectData = {
 		name: effectName('SlowWeaponMastery'),
 		img: 'icons/magic/movement/chevrons-down-yellow.webp',
@@ -1026,8 +1061,8 @@ async function doSlow({ message, shiftKey, el, attackResult, ...attackContext })
 async function doTopple({ message, shiftKey, el, attackResult, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.ToppleRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, target, targetToken, activity, item } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
+	const { attacker, target, activity, item } = context;
+	if (!attacker || !activity || !item) return false;
 	if (target.system.traits?.ci?.value?.has('prone')) {
 		ui.notifications.info(i18n('Notifications.ToppleImmuneProne'));
 		return false;
@@ -1051,9 +1086,9 @@ async function doTopple({ message, shiftKey, el, attackResult, ...attackContext 
 	return !!effects?.length;
 }
 
-function isMatchingVexEffect(effect, attacker, attackerToken) {
+function isMatchingVexEffect(effect, attacker, attackerTokenDocument) {
 	if (effect.name !== effectName('Vex')) return false;
-	if (effect.flags?.wm5e?.attackerTokenUuid === attackerToken.document.uuid) return true;
+	if (effect.flags?.wm5e?.attackerTokenUuid === attackerTokenDocument.uuid) return true;
 	const originItem = fromUuidSync(effect.system.origin?.item);
 	return originItem?.actor?.uuid === attacker.uuid;
 }
@@ -1061,12 +1096,12 @@ function isMatchingVexEffect(effect, attacker, attackerToken) {
 async function doVex({ message, shiftKey, el, attackResult, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.VexRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attacker, attackerToken, target, targetToken, activity, item } = context;
-	if (!attackerToken || !targetToken || !activity) return false;
+	const { attacker, attackerTokenDocument, target, activity, item } = context;
+	if (!attacker || !attackerTokenDocument || !activity || !item) return false;
 	const start = ActiveEffect.implementation.getEffectStart();
 	const duration = { expiry: 'sourceEnd', value: null, units: 'seconds' };
-	const vexFlags = { source: 'Vex action', attackerUuid: attacker.uuid, attackerTokenUuid: attackerToken.document.uuid, itemUuid: item.uuid };
-	const existingEffect = target.appliedEffects.find((ae) => isMatchingVexEffect(ae, attacker, attackerToken));
+	const vexFlags = { source: 'Vex action', attackerUuid: attacker.uuid, attackerTokenUuid: attackerTokenDocument.uuid, itemUuid: item.uuid };
+	const existingEffect = target.appliedEffects.find((ae) => isMatchingVexEffect(ae, attacker, attackerTokenDocument));
 	if (existingEffect) return updateTargetEffect(target, existingEffect, { 'system.origin.item': item.uuid, duration, start, 'flags.wm5e': vexFlags });
 	const effectData = {
 		name: effectName('Vex'),
@@ -1125,9 +1160,12 @@ async function updateEffect({ effectUuid, updates } = {}) {
 	return foundry.utils.isEmpty(effect.updateSource(expected, { dryRun: true, clean: true, fallback: false }));
 }
 
-async function pushAction({ tokenUuid, waypoints }) {
+async function pushAction({ tokenUuid, waypoints, origin }) {
 	const token = await fromUuid(tokenUuid);
-	return token?.move(waypoints, { showRuler: true, constrainOptions: { ignoreWalls: false, ignoreTokens: false } });
+	if (!token || (origin && Object.entries(origin).some(([key, value]) => token[key] !== value))) return false;
+	const { x, y, elevation, level } = token;
+	const completed = await token.move(waypoints, { showRuler: true, constrainOptions: { ignoreWalls: false, ignoreTokens: false } });
+	return !!completed || token.x !== x || token.y !== y || token.elevation !== elevation || token.level !== level;
 }
 
 async function rollSavingThrow({ actorUuid, ability, dc, flavor }) {

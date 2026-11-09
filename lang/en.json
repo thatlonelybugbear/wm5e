@@ -40,6 +40,7 @@
 			"Vex": "Vex"
 		},
 		"Notifications": {
+			"MasteryGeometryUnavailable": "Push and Cleave require the attack's scene and level to be available.",
 			"CleaveRequiresSuccess": "Cleave can only be used on a successful attack roll.",
 			"CleaveNoTargetsInRange": "No valid targets in range for Cleave.",
 			"CleaveAlreadyUsedAttack": "Cleave has already been used for this attack.",

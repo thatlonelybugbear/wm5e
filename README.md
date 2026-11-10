@@ -38,7 +38,7 @@ As the system uses left click to open the Journal entry for each mastery, the mo
 
 To open the Journal entries you can instead right click on the mastery link.
 
-SHIFT + left click on the weapon mastery will bypass rules like: "Needs a successful attack to use".
+SHIFT + left click on the weapon mastery allows repeating an already-used mastery, including its once-per-turn limit, and bypasses rules like: "Needs a successful attack to use". Immunities and the cross-level Push setting still apply.
 
 ## NPC masteries supported (v14.533.3+)
 You can now enable NPC masteries from the module settings, and then any item with a Mastery selected will be triggered for non player actors too.

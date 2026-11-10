@@ -1,3 +1,12 @@
+## 14.610.2
+* Masteries that do not need scene geometry now use token documents, allowing effects, saves, and reminders to work when their tokens are not rendered on the executing client's scene or level.
+* Push and Cleave now preserve the original token identities during GM handoffs and chat-card actions. Scene or level changes during selection stop the action without consuming the mastery.
+* Added elevation-aware 3D Push distances using the scene's diagonal rules, with wall, floor, ceiling, and token collision checks. Push still requires the source scene geometry to be available on the acting client.
+* Added the world setting **Allow Cross-Level Push**, disabled by default. When enabled, Push can move targets between levels with unambiguous elevation boundaries. Elevation changes within the target's current level remain available when disabled.
+* Push now counts as used if the target moves partway before movement is stopped. Completely prevented movement leaves it unused.
+* Cleave now passes explicit target and speaker data to its extra attack and damage rolls and rechecks target eligibility after selection.
+* Shift + left click can now repeat an already-used mastery and override its once-per-turn limit. Concurrent executions remain blocked, and immunity checks and the cross-level Push setting still apply.
+
 ## 14.610.1
 * Verified compatibility with Foundry v14.370 and D&D5E with the pre-release of v6.1
 * Automated Conditions 5e minimum version updated to v14.610.1

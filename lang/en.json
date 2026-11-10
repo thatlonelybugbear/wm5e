@@ -34,6 +34,10 @@
 			"Name": "Enable NPC Masteries",
 			"Hint": "When enabled, NPC weapons with a configured mastery can use that mastery when making attacks."
 		},
+		"CrossLevelPush": {
+			"Name": "Allow Cross-Level Push",
+			"Hint": "Allow Push to move targets into another scene level. Disabled by default. Elevation-aware pushes within the target's current level remain available."
+		},
 		"Effects": {
 			"Sap": "Sap",
 			"SlowWeaponMastery": "Slow (Weapon Mastery)",

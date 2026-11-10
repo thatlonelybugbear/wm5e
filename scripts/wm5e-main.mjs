@@ -51,6 +51,7 @@ Hooks.on('init', () => {
 		icon: 'fa-solid fa-hand',
 		canSelect: false,
 		measure: false,
+		walls: 'move',
 		terrainAction: null,
 		costMultiplier: 0,
 	};
@@ -954,7 +955,7 @@ async function doNick({ message, shiftKey, el, ...attackContext }) {
 async function doPush({ message, shiftKey, el, attackResult, dialogPosition, ...attackContext }) {
 	const context = getActionContext({ ...attackContext, message, shiftKey, requireSuccess: true, warning: 'Notifications.PushRequiresSuccess', attackResult });
 	if (!context) return false;
-	const { attackerToken, targetToken, targetTokenDocument, target, activity } = context;
+	const { attackerTokenDocument, targetToken, targetTokenDocument, target, activity } = context;
 	if (!activity || !hasMasteryGeometry(context)) return false;
 	const level = canvas.level;
 	const targetTokenSize = Math.max(targetTokenDocument.width, targetTokenDocument.height);
@@ -962,11 +963,9 @@ async function doPush({ message, shiftKey, el, attackResult, dialogPosition, ...
 		ui.notifications.warn(i18n('Notifications.PushSizeLimit'));
 		return false;
 	}
-	const { angle } = new foundry.canvas.geometry.Ray(attackerToken.center, targetToken.center);
-	const direction = Math.normalizeDegrees(Math.toDegrees(angle));
 	const positions = new Map();
 	for (const distance of [1, 2].map((multiplier) => multiplier * gridUnitDistance(targetTokenDocument.parent))) {
-		const position = getPushPosition(targetToken, direction, distance);
+		const position = getPushPosition(attackerTokenDocument, targetToken, distance);
 		if (position) positions.set(distance, position);
 	}
 	if (!positions.size) {
@@ -976,30 +975,140 @@ async function doPush({ message, shiftKey, el, attackResult, dialogPosition, ...
 	const pushDistance = await promptPushDistance([...positions.keys()], dialogPosition, targetTokenDocument.parent.grid.units);
 	if (!pushDistance) return false;
 	if (!positions.has(pushDistance) || !hasMasteryGeometry(context, level)) return false;
-	const { angle: currentAngle } = new foundry.canvas.geometry.Ray(attackerToken.center, targetToken.center);
-	const waypoints = getPushPosition(targetToken, Math.normalizeDegrees(Math.toDegrees(currentAngle)), pushDistance);
+	const waypoints = getPushPosition(attackerTokenDocument, targetToken, pushDistance);
 	if (!waypoints) {
 		ui.notifications.warn(i18n('Notifications.PushNoSpace'));
 		return false;
 	}
-	const { x, y, elevation, level: targetLevel } = targetTokenDocument;
-	const data = { tokenUuid: targetTokenDocument.uuid, waypoints, origin: { x, y, elevation, level: targetLevel } };
+	const { x, y, elevation, level: targetLevel, width, height, depth, shape } = targetTokenDocument;
+	const data = { tokenUuid: targetTokenDocument.uuid, waypoints, origin: { x, y, elevation, level: targetLevel, width, height, depth, shape } };
 	const pushed = target.isOwner ? await pushAction(data) : await doQueries('push', data);
 	if (!pushed) return false;
 	return true;
 }
 
-function getPushPosition(targetToken, direction, maxDistance) {
-	const { x, y, elevation, level } = targetToken.document;
+function getPushWaypoints(document, destination) {
+	const scene = document.parent;
+	const origin = { x: document.x, y: document.y, elevation: document.elevation, level: document.level, action: 'wm5ePush' };
+	const delta = destination.elevation - origin.elevation;
+	const levels = scene.levels.contents;
+	const cuts = [0, 1];
+	if (delta) {
+		for (const level of levels) {
+			for (const bound of [level.elevation.bottom, level.elevation.top]) {
+				if (!Number.isFinite(bound)) continue;
+				const t = (bound - origin.elevation) / delta;
+				if (t > 0 && t < 1) cuts.push(t);
+			}
+		}
+	}
+	const times = [...new Set(cuts)].sort((a, b) => a - b);
+	const path = [origin];
+	let level = scene.levels.get(origin.level);
+	if (!level) return null;
+	for (let i = 1; i < times.length; i++) {
+		const elevation = origin.elevation + delta * (times[i - 1] + times[i]) / 2;
+		if (elevation < level.elevation.bottom || elevation > level.elevation.top) {
+			const candidates = levels.filter((candidate) => elevation >= candidate.elevation.bottom && elevation <= candidate.elevation.top);
+			if (candidates.length !== 1) return null;
+			level = candidates[0];
+			path.push({ ...path.at(-1), level: level.id });
+		}
+		const t = times[i];
+		path.push({
+			x: Math.round(origin.x + (destination.x - origin.x) * t),
+			y: Math.round(origin.y + (destination.y - origin.y) * t),
+			elevation: origin.elevation + delta * t,
+			level: level.id,
+			action: 'wm5ePush',
+			snapped: i === times.length - 1,
+		});
+	}
+	if (delta > 0 && destination.elevation === level.elevation.top) {
+		const adjacent = levels.filter((candidate) => candidate.id !== level.id && candidate.elevation.bottom === destination.elevation);
+		if (adjacent.length > 1) return null;
+		if (adjacent.length) path.push({ ...path.at(-1), level: adjacent[0].id });
+	}
+	// Check surfaces belonging to either level before allowing a level transition.
+	const traversed = new Set(path.map((waypoint) => waypoint.level));
+	if (traversed.size > 1 && game.settings.get(Constants.MODULE_ID, 'crossLevelPush') !== true) return null;
+	if (traversed.size > 1) {
+		const from = document.getMovementOrigin(origin);
+		const to = document.getMovementOrigin(destination);
+		const height = document.depth * scene.grid.distance / 2;
+		const upwards = delta > 0;
+		for (const level of traversed) {
+			const offset = upwards ? height : -height;
+			if (scene.testSurfaceCollision({ ...from, elevation: from.elevation + offset }, { ...to, elevation: to.elevation + offset }, { type: 'move', mode: 'any', side: upwards ? 'above' : 'below', tMax: 1 - 1e-8, level }) || scene.testSurfaceCollision(from, to, { type: 'move', mode: 'any', side: 'below', tMax: 1 - 1e-8, level })) return null;
+		}
+	}
+	return path;
+}
+
+function isPushPathOccupied(document, waypoints) {
+	const scene = document.parent;
+	if (scene.grid.isGridless || game.settings.get('dnd5e', 'movementAutomation') !== 'full' || !document.actor?.system.isCreature || document.actor.statuses.intersects(CONFIG.DND5E.neverBlockStatuses)) return false;
+	// Native collision checks use the canvas quadtree. Supplement tokens on levels which are not rendered.
+	const size = CONFIG.DND5E.actorSizes[document.actor.system.traits.size]?.numerical ?? 2;
+	const candidates = scene.tokens.filter((other) => {
+		if (other === document || other.rendered || other.hidden || other.disposition === CONST.TOKEN_DISPOSITIONS.SECRET || other.disposition === document.disposition || !other.actor?.system.isCreature || other.actor.statuses.intersects(CONFIG.DND5E.neverBlockStatuses)) return false;
+		const otherSize = CONFIG.DND5E.actorSizes[other.actor.system.details?.type?.swarm || other.actor.system.traits.size]?.numerical ?? 2;
+		if (dnd5e.settings.rulesVersion === 'modern' && otherSize === 0) return false;
+		if (document.actor.getFlag('dnd5e', 'halflingNimbleness') && otherSize > size) return false;
+		return Math.abs(size - otherSize) < 2;
+	});
+	if (!candidates.length) return false;
+	for (const waypoint of document.getCompleteMovementPath(waypoints).slice(1)) {
+		const spaces = document.getOccupiedGridSpaceOffsets(waypoint);
+		const bottom = Math.floor(waypoint.elevation / scene.grid.distance) * scene.grid.distance;
+		for (const other of candidates) {
+			if (other.level !== waypoint.level || other.elevation < bottom || other.elevation >= bottom + scene.grid.distance) continue;
+			if (other.getOccupiedGridSpaceOffsets().some((space) => spaces.some((occupied) => occupied.i === space.i && occupied.j === space.j))) return true;
+		}
+	}
+	return false;
+}
+
+function getPushPosition(attackerDocument, targetToken, maxDistance) {
+	const document = targetToken.document;
+	const scene = document.parent;
+	const pixels = scene.dimensions.distancePixels;
+	const attacker = attackerDocument.getCenterPoint();
+	const target = document.getCenterPoint();
+	const dx = (target.x - attacker.x) / pixels;
+	const dy = (target.y - attacker.y) / pixels;
+	const dz = target.elevation - attacker.elevation;
+	const length = Math.hypot(dx, dy, dz);
+	if (!length) return null;
+	const origin = { x: document.x, y: document.y, elevation: document.elevation };
 	for (const offset of [0, 45, -45]) {
-		const point = canvas.grid.getTranslatedPoint(targetToken, direction + offset, maxDistance);
-		const snapped = targetToken.document.getSnappedPosition({ ...point, elevation, level });
-		const path = targetToken.findMovementPath([
-			{ x, y, elevation, level, action: 'wm5ePush' },
-			{ ...snapped, elevation, level, snapped: true, action: 'wm5ePush' },
-		], { constrainOptions: { ignoreWalls: false, ignoreTokens: false } });
+		const angle = offset * Math.PI / 180;
+		const vx = (dx * Math.cos(angle) - dy * Math.sin(angle)) / length;
+		const vy = (dx * Math.sin(angle) + dy * Math.cos(angle)) / length;
+		const vz = dz / length;
+		let low = 0, high = maxDistance * Math.sqrt(3) + scene.grid.distance, snapped;
+		// Fit the snapped 3D ray to the scene's diagonal rule, rather than assuming Euclidean distance.
+		for (let i = 0; i < 24; i++) {
+			const distance = (low + high) / 2;
+			const point = document.getSnappedPosition({ x: origin.x + vx * distance * pixels, y: origin.y + vy * distance * pixels, elevation: origin.elevation + vz * distance });
+			if (Math.abs(vx) < 1e-8) point.x = origin.x;
+			if (Math.abs(vy) < 1e-8) point.y = origin.y;
+			if (!vz) point.elevation = origin.elevation;
+			point.x = Math.round(point.x);
+			point.y = Math.round(point.y);
+			if ((point.x - origin.x) * vx < 0) point.x = origin.x;
+			if ((point.y - origin.y) * vy < 0) point.y = origin.y;
+			if ((point.elevation - origin.elevation) * vz < 0) point.elevation = origin.elevation;
+			const measured = scene.grid.measurePath([target, document.getCenterPoint(point)]).distance;
+			if (measured > maxDistance + 1e-6) high = distance;
+			else { low = distance; snapped = point; }
+		}
+		if (!snapped || (snapped.x === origin.x && snapped.y === origin.y && snapped.elevation === origin.elevation)) continue;
+		const waypoints = getPushWaypoints(document, snapped);
+		if (!waypoints) continue;
+		const path = targetToken.findMovementPath(waypoints, { constrainOptions: { ignoreWalls: false, ignoreTokens: false } });
 		const destination = path.result?.at(-1);
-		if (path.result?.length > 1 && destination.x === snapped.x && destination.y === snapped.y) return path.result.slice(1);
+		if (path.result?.length > 1 && destination.x === snapped.x && destination.y === snapped.y && Math.abs(destination.elevation - snapped.elevation) < 1e-6 && destination.level === waypoints.at(-1).level && scene.grid.measurePath(path.result.map((waypoint) => document.getCenterPoint(waypoint))).distance <= maxDistance + 1e-6 && !isPushPathOccupied(document, path.result)) return path.result.slice(1);
 	}
 	return null;
 }
@@ -1163,6 +1272,7 @@ async function updateEffect({ effectUuid, updates } = {}) {
 async function pushAction({ tokenUuid, waypoints, origin }) {
 	const token = await fromUuid(tokenUuid);
 	if (!token || (origin && Object.entries(origin).some(([key, value]) => token[key] !== value))) return false;
+	if (waypoints.some((waypoint) => waypoint.level && waypoint.level !== token.level) && game.settings.get(Constants.MODULE_ID, 'crossLevelPush') !== true) return false;
 	const { x, y, elevation, level } = token;
 	const completed = await token.move(waypoints, { showRuler: true, constrainOptions: { ignoreWalls: false, ignoreTokens: false } });
 	return !!completed || token.x !== x || token.y !== y || token.elevation !== elevation || token.level !== level;
@@ -1394,6 +1504,13 @@ function registerSettings() {
 		config: true,
 		type: new foundry.data.fields.BooleanField({ initial: false }),
 	});
+	game.settings.register(Constants.MODULE_ID, 'crossLevelPush', {
+		name: 'WM5E.CrossLevelPush.Name',
+		hint: 'WM5E.CrossLevelPush.Hint',
+		scope: 'world',
+		config: true,
+		type: new foundry.data.fields.BooleanField({ initial: false }),
+	});
 }
 
 function isAutoMasteriesEnabled(userId = game.user.id) {
@@ -1476,14 +1593,14 @@ function getMasteryTurn(actor, mastery) {
 
 async function executeMastery({ attackMessage, mastery, rowId, el, ...context }) {
 	if (!attackMessage || !rowId) return false;
-	if (hasUsedMastery(attackMessage, mastery, rowId)) {
+	if (!context.shiftKey && hasUsedMastery(attackMessage, mastery, rowId)) {
 		if (el && mastery === 'cleave') ui.notifications.info(i18n('Notifications.CleaveAlreadyUsedAttack'));
 		return false;
 	}
 	const authority = game.users.activeGM ?? (attackMessage.author?.active ? attackMessage.author : null);
 	if (!authority) return false;
 	const request = (data) => authority.id === game.user.id ? claimMastery(data) : authority.query(Constants.CLAIM_MASTERY, data);
-	const data = { messageId: attackMessage.id, mastery, rowId };
+	const data = { messageId: attackMessage.id, mastery, rowId, force: context.shiftKey === true };
 	let token, used = false;
 	try {
 		const claim = await request(data);
@@ -1519,7 +1636,7 @@ function releaseAbandonedMasteryClaims(userId) {
 	}
 }
 
-async function claimMastery({ messageId, mastery, rowId, token, used } = {}, { user = game.user } = {}) {
+async function claimMastery({ messageId, mastery, rowId, token, used, force = false } = {}, { user = game.user } = {}) {
 	if (!Object.hasOwn(WM_ACTIONS, toMasteryLabel(mastery)) || typeof rowId !== 'string' || rowId.length > 256) return false;
 	const message = game.messages.get(messageId);
 	if (!message?.canUserModify(game.user, 'update') || !canUseMastery(message, user)) return false;
@@ -1561,11 +1678,11 @@ async function claimMastery({ messageId, mastery, rowId, token, used } = {}, { u
 		}
 		return saved;
 	}
-	if (existing || hasUsedMastery(message, mastery, rowId)) return false;
+	if (existing || (force !== true && hasUsedMastery(message, mastery, rowId))) return false;
 	const actor = message.getAssociatedActor?.() ?? message.speakerActor;
 	const turn = getMasteryTurn(actor, mastery);
 	const turnKey = turn ? `${actor.uuid}:${mastery}:${turn}` : null;
-	if (turnKey && actor.getFlag(Constants.MODULE_ID, `masteryTurns.${mastery}`)?.includes(turn)) return { reason: 'usedThisTurn' };
+	if (force !== true && turnKey && actor.getFlag(Constants.MODULE_ID, `masteryTurns.${mastery}`)?.includes(turn)) return { reason: 'usedThisTurn' };
 	if (turnKey && MASTERY_TURN_CLAIMS.has(turnKey)) return false;
 	token = foundry.utils.randomID();
 	MASTERY_CLAIMS.set(key, { token, userId: user.id, actor, turn, turnKey });
